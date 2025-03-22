@@ -2,7 +2,7 @@
 
 import os
 import logging
-from typing import Dict, List, Any, Optional, Type
+from typing import Dict, List, Any
 
 from src.extractors.python_extractor import PythonExtractor
 from src.extractors.javascript_extractor import JavaScriptExtractor

@@ -90,6 +90,7 @@ Make sure you have a virtual environment set up in your workspace with all the r
 ### Search Performance Issues
 
 For large codebases, consider:
+
 - Excluding unnecessary file types when building the index
 - Using more specific search queries
-- Limiting your search to specific content types 
+- Limiting your search to specific content types

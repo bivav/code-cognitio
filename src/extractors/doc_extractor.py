@@ -2,7 +2,7 @@
 
 import os
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 
 from src.extractors.markdown_extractor import MarkdownExtractor
 from src.extractors.rst_extractor import RSTExtractor

@@ -1,11 +1,9 @@
 """Command-line interface for Code Cognitio."""
 
 import os
-import sys
 import argparse
 import json
 import logging
-from typing import List, Dict, Any, Optional
 
 from src.core.search_service import SearchService
 from src.core.file_processor import FileProcessor

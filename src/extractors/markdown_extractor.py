@@ -2,7 +2,7 @@
 
 import os
 import re
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any
 
 
 class MarkdownExtractor:

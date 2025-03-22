@@ -3,7 +3,7 @@
 import os
 import re
 import logging
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Set
 from src.extractors.base_extractor import BaseExtractor
 
 # Setup logging
