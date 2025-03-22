@@ -17,7 +17,7 @@ Code Cognitio extracts, processes, and indexes code from various programming lan
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/code-cognitio.git
+git clone https://github.com/bivav/code-cognitio.git
 cd code-cognitio
 
 # Set up a virtual environment (recommended)
@@ -37,6 +37,16 @@ python -m src.main build path/to/repo --file-types=py,js,md
 # Search the index
 python -m src.main search "how to implement auth"
 ```
+
+### VS Code Extension
+
+Code Cognitio also includes a VS Code extension that provides an integrated semantic search experience in your development environment:
+
+- Build search index directly from VS Code
+- Search using natural language queries
+- View and navigate to results in a dedicated panel
+
+See [VS Code Extension Documentation](docs/vscode_extension.md) for details on installation and usage.
 
 ## Development
 
