@@ -1069,8 +1069,6 @@ class PythonExtractor(BaseExtractor):
         name = node.name.lower()
 
         # Check for singleton pattern
-        has_instance = False
-        has_private_init = False
         for item in node.body:
             # Look for class variables that might indicate a singleton
             if (
@@ -1078,7 +1076,7 @@ class PythonExtractor(BaseExtractor):
                 and isinstance(item.target, ast.Name)
                 and item.target.id == "_instance"
             ):
-                has_instance = True
+                patterns.append("singleton")
             # Look for __new__ method which is often used in singletons
             if isinstance(item, ast.FunctionDef) and item.name == "__new__":
                 patterns.append("singleton")
@@ -1158,7 +1156,6 @@ class PythonExtractor(BaseExtractor):
             patterns.append("data container")
 
         # Look for enum pattern
-        is_enum = False
         constant_count = 0
         for item in node.body:
             if isinstance(item, ast.Assign):
@@ -1516,7 +1513,6 @@ class PythonExtractor(BaseExtractor):
 
                 if caller_id:
                     # Get the called function
-                    called_func = None
                     if isinstance(node.func, ast.Name):
                         called_id = f"function:{node.func.id}"
                         if called_id in code_map:
@@ -1618,7 +1614,7 @@ class PythonExtractor(BaseExtractor):
                             else f"import at line {item.lineno}"
                         )
                         imports.append(import_text)
-                    except:
+                    except Exception:
                         imports.append(f"import at line {item.lineno}")
 
                 # Collect global variables
@@ -1683,8 +1679,6 @@ class PythonExtractor(BaseExtractor):
 
             # Get relationship information from the code map's analysis
             subclasses = []
-            # Create empty relationships dictionary if not provided in the context
-            relationships = {}
 
             # Look for classes that might inherit from this one
             for key, info in code_map.items():

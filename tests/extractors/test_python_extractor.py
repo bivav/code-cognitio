@@ -41,11 +41,11 @@ MAX_RETRIES = 3
 def sample_function(param1: str, param2: int = 10) -> bool:
     \"\"\"
     Sample function for testing extraction.
-    
+
     Args:
         param1: First parameter description
         param2: Second parameter description
-        
+
     Returns:
         A boolean result
     \"\"\"
@@ -55,31 +55,31 @@ def sample_function(param1: str, param2: int = 10) -> bool:
 
 class SampleClass:
     \"\"\"Sample class for testing extraction.\"\"\"
-    
+
     def __init__(self, name: str):
         \"\"\"Initialize the class.
-        
+
         Args:
             name: The name parameter
         \"\"\"
         self.name = name
         self._private_attr = 100
-        
+
     def sample_method(self, param: int) -> str:
         \"\"\"Sample method.
-        
+
         Args:
             param: A parameter
-            
+
         Returns:
             A string result
         \"\"\"
         return f"{self.name}: {param}"
-    
+
     @property
     def formatted_name(self) -> str:
         \"\"\"Get the formatted name.
-        
+
         Returns:
             The formatted name
         \"\"\"
@@ -88,26 +88,26 @@ class SampleClass:
 
 class APIClass:
     \"\"\"Class representing an API.\"\"\"
-    
+
     def get_data(self, endpoint: str) -> Dict[str, Any]:
         \"\"\"Get data from an API endpoint.
-        
+
         Args:
             endpoint: The API endpoint
-            
+
         Returns:
             Dictionary of response data
         \"\"\"
         # This would make an HTTP request in a real implementation
         return {"status": 200, "data": f"Data from {endpoint}"}
-    
+
     def post_data(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
         \"\"\"Post data to an API endpoint.
-        
+
         Args:
             endpoint: The API endpoint
             data: The data to post
-            
+
         Returns:
             Dictionary with response data
         \"\"\"
@@ -135,10 +135,10 @@ async def fastapi_endpoint():
 
 def process_list(items: List[str]) -> List[str]:
     \"\"\"Process a list of items.
-    
+
     Args:
         items: List of items to process
-        
+
     Returns:
         Processed list of items
     \"\"\"
@@ -151,12 +151,12 @@ def process_list(items: List[str]) -> List[str]:
 
 def complex_function(a: int, b: int, flag: bool = False) -> Union[int, str]:
     \"\"\"Complex function with multiple operations.
-    
+
     Args:
         a: First number
         b: Second number
         flag: Control flag
-        
+
     Returns:
         Result of the operation
     \"\"\"
@@ -175,10 +175,10 @@ def complex_function(a: int, b: int, flag: bool = False) -> Union[int, str]:
 
 def recursive_function(n: int) -> int:
     \"\"\"Recursive function example.
-    
+
     Args:
         n: Input number
-        
+
     Returns:
         Result of recursion
     \"\"\"
@@ -189,21 +189,21 @@ def recursive_function(n: int) -> int:
 
 class DatabaseClass:
     \"\"\"Class for database operations.\"\"\"
-    
+
     def __init__(self, connection_string: str):
         \"\"\"Initialize with connection string.
-        
+
         Args:
             connection_string: Database connection string
         \"\"\"
         self.connection_string = connection_string
-        
+
     def execute_query(self, query: str) -> List[Dict[str, Any]]:
         \"\"\"Execute a database query.
-        
+
         Args:
             query: SQL query to execute
-            
+
         Returns:
             Query results
         \"\"\"
@@ -216,7 +216,7 @@ if __name__ == "__main__":
     sample_function("test", 5)
     obj = SampleClass("Test Object")
     print(obj.sample_method(123))
-    
+
     api = APIClass()
     print(api.get_data("/users"))
 """
@@ -234,11 +234,11 @@ if __name__ == "__main__":
                 content += f"""
 def function_{i}(param1, param2):
     \"\"\"Function {i} docstring.
-    
+
     Args:
         param1: First parameter
         param2: Second parameter
-        
+
     Returns:
         Result of the function
     \"\"\"
@@ -523,17 +523,17 @@ def api_endpoint(request):
         class_code = """
 class APIClient:
     \"\"\"API client class.\"\"\"
-    
+
     def __init__(self, base_url):
         self.base_url = base_url
         self.session = None
-    
+
     def get(self, endpoint):
         return self._request('GET', endpoint)
-    
+
     def post(self, endpoint, data):
         return self._request('POST', endpoint, data)
-    
+
     def _request(self, method, endpoint, data=None):
         url = f"{self.base_url}/{endpoint}"
         return {'method': method, 'url': url, 'data': data}

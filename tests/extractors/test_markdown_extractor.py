@@ -206,7 +206,7 @@ More detailed usage information.
             os.chmod(unreadable_file, 0)
             results = markdown_extractor.extract_from_file(unreadable_file)
             assert results == []
-        except:
+        except Exception:
             # If we can't make the file unreadable, just skip this part
             pass
         finally:
@@ -214,5 +214,5 @@ More detailed usage information.
             try:
                 os.chmod(unreadable_file, 0o644)
                 os.unlink(unreadable_file)
-            except:
+            except Exception:
                 pass

@@ -256,7 +256,7 @@ class DockerfileExtractor(BaseExtractor):
 
                     volume_list = json.loads(volume_str)
                     volumes.extend(volume_list)
-                except:
+                except Exception:
                     # Fallback to simple parsing if JSON parsing fails
                     for volume in re.split(r"[,\s]+", volume_str.strip(" []")):
                         if volume and volume != ",":

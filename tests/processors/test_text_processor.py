@@ -59,13 +59,13 @@ class TestTextProcessor:
         # Test with text that needs both code removal and whitespace normalization
         mixed_text = """
     This is  a paragraph   with extra  spaces.
-    
+
     ```python
     def example():
         # This should be removed
         return "Hello"
     ```
-    
+
        This has leading whitespace.
     """
         result = text_processor.clean_text(mixed_text)
@@ -185,6 +185,6 @@ End of text.
         try:
             result = text_processor.clean_text(None)
             assert result == ""
-        except:
+        except Exception:
             # If it raises an exception, that's an acceptable implementation too
             pass

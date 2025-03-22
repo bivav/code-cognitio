@@ -29,11 +29,11 @@ def temp_python_file(temp_dir):
 def sample_function(param1: str, param2: int = 0) -> bool:
     \"\"\"
     Sample function for testing extraction.
-    
+
     Args:
         param1: First parameter description
         param2: Second parameter description
-        
+
     Returns:
         A boolean result
     \"\"\"
@@ -41,18 +41,18 @@ def sample_function(param1: str, param2: int = 0) -> bool:
 
 class SampleClass:
     \"\"\"Sample class for testing class extraction.\"\"\"
-    
+
     def __init__(self, name: str):
         \"\"\"Initialize with a name.\"\"\"
         self.name = name
-        
+
     def sample_method(self, value: int) -> str:
         \"\"\"
         Sample method for testing method extraction.
-        
+
         Args:
             value: An integer value
-        
+
         Returns:
             A string representation
         \"\"\"

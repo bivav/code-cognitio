@@ -21,7 +21,7 @@ class TestJavaScriptExtractor:
             f.write(
                 b"""/**
  * A sample function for testing extraction.
- * 
+ *
  * @param {string} param1 - First parameter description
  * @param {number} param2 - Second parameter description
  * @returns {boolean} A boolean result
@@ -226,7 +226,7 @@ export default SampleComponent;
          * @returns {boolean} A result
          */
         function test() {}
-        
+
         /**
          * Another function.
          * @throws {Error} When something fails
@@ -296,11 +296,11 @@ export default SampleComponent;
         function simpleFunction() {
             return true;
         }
-        
+
         async function asyncFunction(param) {
             return await Promise.resolve(param);
         }
-        
+
         export function exportedFunction(a, b) {
             return a + b;
         }
