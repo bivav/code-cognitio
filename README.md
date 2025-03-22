@@ -1,15 +1,17 @@
 # Code Cognitio
 
-A powerful semantic search system for code repositories that uses FAISS vector similarity and advanced text processing to enable natural language searching of code and documentation.
+A semantic search system for code repositories.
+
+## Overview
+
+Code Cognitio extracts, processes, and indexes code from various programming languages to create a semantic search engine. It allows you to find relevant code snippets and documentation by searching for concepts rather than just exact text matches.
 
 ## Features
 
-- **FAISS Vector Search**: Efficient similarity search using Facebook AI's FAISS library
-- **Multiple Index Types**: Separate indices for code and documentation
-- **Content Filtering**: Filter search results by content type
-- **Lemmatization**: Improved text processing with both NLTK and spaCy support
-- **Language Support**: Extracts information from Python code and documentation files (Markdown, RST)
-- **Extensible Architecture**: Designed to be easily extended with additional extractors and processors
+- Extract code structure from multiple languages (Python, JavaScript, TypeScript)
+- Parse documentation files (Markdown, reStructuredText)
+- Process text with advanced NLP techniques
+- Build and query semantic search indexes
 
 ## Installation
 
@@ -18,87 +20,77 @@ A powerful semantic search system for code repositories that uses FAISS vector s
 git clone https://github.com/yourusername/code-cognitio.git
 cd code-cognitio
 
-# Create a virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+# Set up a virtual environment (recommended)
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
-uv pip install -e .
+pip install -r requirements.txt
 ```
-
-### Requirements
-
-- Python 3.8+
-- FAISS for efficient vector similarity
-- sentence-transformers for high-quality embeddings
-- NLTK and/or spaCy for text processing
 
 ## Usage
 
-### Building the Search Index
-
 ```bash
-# Index a specific file or directory
-python -m src.main build path/to/your/code
+# Build an index from source files
+python -m src.main build path/to/repo --file-types=py,js,md
 
-# Index multiple paths with spaCy for better text processing
-python -m src.main build --spacy path/to/code path/to/docs
-
-# Use GPU for faster processing (if available)
-python -m src.main build --gpu path/to/your/code
+# Search the index
+python -m src.main search "how to implement auth"
 ```
 
-### Searching
+## Development
+
+### Setup
 
 ```bash
-# Basic search
-python -m src.main search "How to use the DataProcessor class"
-
-# Filter by content type (code or documentation)
-python -m src.main search "How to remove duplicates" --filter code
-
-# Set the number of results to return
-python -m src.main search "configuration options" --top-k 10
-
-# Set a minimum similarity score threshold
-python -m src.main search "error handling" --min-score 0.5
+# Install development dependencies
+make dev
 ```
 
-## Architecture
+### Testing
 
-The system consists of the following components:
+We have a comprehensive test suite covering extractors, processors, and the search engine.
 
-1. **Extractors**: Parse files to extract meaningful chunks
-   - `PythonExtractor`: Extracts functions, classes, and docstrings from Python files
-   - `MarkdownExtractor`: Extracts sections from Markdown files
-   - `RSTExtractor`: Extracts sections from reStructuredText files
+```bash
+# Run all tests
+make test
 
-2. **Text Processor**: Cleans and normalizes text for indexing
-   - Supports lemmatization using spaCy or NLTK
-   - Removes stop words and normalizes text
+# Run specific test categories
+make test-extractors
+make test-processors
+make test-search
+make test-integration
 
-3. **Search Engine**: Indexes and searches content
-   - Uses FAISS for efficient vector similarity search
-   - Supports multiple indices for different content types
-   - Normalizes embeddings for cosine similarity
+# Generate test coverage report
+make coverage
+make coverage-html  # HTML report in htmlcov/
+```
 
-## Extending the System
+### Code Quality
 
-### Adding a New File Format
+```bash
+# Format code
+make format
 
-To add support for a new file format:
+# Lint code
+make lint
 
-1. Create a new extractor class in `src/extractors/`
-2. Register the extractor in `CodeExtractor` or `DocExtractor`
+# Type checking
+make typecheck
+```
 
-### Adding a New Search Backend
+## Project Structure
 
-To add a new search backend:
-
-1. Create a new search engine class in `src/search/`
-2. Implement the same interface as `FaissSearchEngine`
-3. Update `SearchEngine` to use the new backend
+- `src/`: Main package
+  - `extractors/`: Code and documentation extraction modules
+  - `processors/`: Text processing and chunking
+  - `search/`: Search engine implementation
+- `tests/`: Test suite
+  - `extractors/`: Tests for extractors
+  - `processors/`: Tests for text processors
+  - `search/`: Tests for search engine
+  - `test_integration.py`: End-to-end tests
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+[MIT License](LICENSE)

@@ -8,17 +8,15 @@ click==8.1.8
 cloudpathlib==0.21.0
 -e file:///Users/bivav/PythonProjects/code-cognitio
 confection==0.1.5
+coverage==7.7.1
 cymem==2.0.11
 docutils==0.21.2
-elastic-transport==8.17.1
-elasticsearch==8.17.2
-elasticsearch-dsl==8.17.1
-en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 faiss-cpu==1.10.0
 filelock==3.18.0
 fsspec==2025.3.0
 huggingface-hub==0.29.3
 idna==3.10
+iniconfig==2.1.0
 jinja2==3.1.6
 joblib==1.4.2
 langcodes==3.5.0
@@ -35,12 +33,14 @@ nltk==3.9.1
 numpy==2.2.4
 packaging==24.2
 pillow==11.1.0
+pip==24.3.1
+pluggy==1.5.0
 preshed==3.0.9
 pydantic==2.10.6
 pydantic-core==2.27.2
 pygments==2.19.1
-python-dateutil==2.9.0.post0
-python-dotenv==1.0.1
+pytest==8.3.5
+pytest-cov==6.0.0
 python-magic==0.4.27
 pyyaml==6.0.2
 regex==2024.11.6
@@ -50,9 +50,8 @@ safetensors==0.5.3
 scikit-learn==1.6.1
 scipy==1.15.2
 sentence-transformers==3.4.1
-setuptools==77.0.3
+setuptools==75.6.0
 shellingham==1.5.4
-six==1.17.0
 smart-open==7.1.0
 soupsieve==2.6
 spacy==3.8.4
