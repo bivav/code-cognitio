@@ -39,4 +39,4 @@ When adding new functionality to the codebase, please also add corresponding tes
 1. For new extractors, add tests to `tests/extractors/`
 2. For new processors, add tests to `tests/processors/`
 3. For new search components, add tests to `tests/search/`
-4. For features that span multiple components, add integration tests to `test_integration.py` 
+4. For features that span multiple components, add integration tests to `test_integration.py`
