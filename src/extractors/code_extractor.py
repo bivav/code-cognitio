@@ -5,6 +5,8 @@ import logging
 from typing import Dict, List, Any, Optional, Type
 
 from src.extractors.python_extractor import PythonExtractor
+from src.extractors.javascript_extractor import JavaScriptExtractor
+from src.extractors.dockerfile_extractor import DockerfileExtractor
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -24,8 +26,13 @@ class CodeExtractor:
         # Map of file extensions to their corresponding extractors
         self.extractors = {
             ".py": PythonExtractor(),
+            ".js": JavaScriptExtractor(),
+            ".jsx": JavaScriptExtractor(),
+            ".ts": JavaScriptExtractor(),
+            ".tsx": JavaScriptExtractor(),
+            ".dockerfile": DockerfileExtractor(),
+            ".Dockerfile": DockerfileExtractor(),
             # Add more language extractors as they become available
-            # '.js': JavaScriptExtractor(),
             # '.java': JavaExtractor(),
             # '.cpp': CPPExtractor(),
             # '.c': CExtractor(),
@@ -38,6 +45,14 @@ class CodeExtractor:
             ".pyi": ".py",  # Python interface files
         }
 
+        # Add file detection for files without extensions
+        self.file_patterns = {
+            "Dockerfile": DockerfileExtractor(),
+            "dockerfile": DockerfileExtractor(),  # Add lowercase version
+            "docker-compose.yml": DockerfileExtractor(),
+            "docker-compose.yaml": DockerfileExtractor(),
+        }
+
     def extract_from_file(self, file_path: str) -> List[Dict[str, Any]]:
         """
         Extract code information from a file based on its extension.
@@ -48,6 +63,17 @@ class CodeExtractor:
         Returns:
             List of extracted items
         """
+        filename = os.path.basename(file_path)
+
+        # Check if filename matches a known pattern
+        if filename in self.file_patterns:
+            extractor = self.file_patterns[filename]
+            logger.info(
+                f"Using {type(extractor).__name__} for {file_path} (matched by filename)"
+            )
+            return extractor.extract_from_file(file_path)
+
+        # Check by extension
         _, ext = os.path.splitext(file_path)
         ext = ext.lower()  # Normalize extension
 

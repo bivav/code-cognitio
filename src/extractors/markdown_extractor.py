@@ -29,9 +29,45 @@ class MarkdownExtractor:
             # Extract sections based on headers
             sections = self._extract_sections(content, file_path)
 
-            # Add the document title as metadata
+            # If no sections were found, create a single section for the whole document
+            if not sections:
+                sections = [
+                    {
+                        "type": "section",
+                        "level": 0,
+                        "title": title,
+                        "content": content,
+                        "file_path": file_path,
+                        "position": 0,
+                        "content_type": "documentation",
+                        "description": f"{title} documentation",
+                    }
+                ]
+
+            # Add the document title as metadata and enhance section data
             for section in sections:
                 section["document_title"] = title
+
+                # Add content type for proper processing
+                section["content_type"] = "documentation"
+
+                # Add a description based on the section title
+                if "description" not in section:
+                    section["description"] = section.get("title", "")
+
+                # Add section content summary
+                section_content = section.get("content", "")
+                if section_content:
+                    # Create a summary by taking the first sentence or first 100 chars
+                    first_sentence = re.match(r"^(.*?[.!?])\s", section_content)
+                    if first_sentence:
+                        section["summary"] = first_sentence.group(1)
+                    else:
+                        section["summary"] = (
+                            section_content[:100] + "..."
+                            if len(section_content) > 100
+                            else section_content
+                        )
 
             return sections
         except Exception as e:
@@ -40,85 +76,119 @@ class MarkdownExtractor:
 
     def _extract_sections(self, content: str, file_path: str) -> List[Dict[str, Any]]:
         """
-        Extract sections from Markdown content based on headers.
+        Extract sections from Markdown content.
 
         Args:
             content: Markdown content
-            file_path: Path to the file
+            file_path: Path to the Markdown file
 
         Returns:
-            List of dictionaries with section information
+            List of section dictionaries
         """
         sections = []
+        lines = content.split("\n")
+        current_section = None
+        current_content = []
+        current_level = 0
+        position = 0
 
-        # Get all headers
-        header_pattern = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
-        headers = [
-            (match.group(1), match.group(2), match.start())
-            for match in header_pattern.finditer(content)
-        ]
+        for i, line in enumerate(lines):
+            # Check if this is a header line
+            header_match = re.match(r"^(#{1,6})\s+(.+)$", line)
+            if header_match:
+                # If we were building a section, add it to the list
+                if current_section:
+                    section_content = "\n".join(current_content).strip()
+                    sections.append(
+                        {
+                            "type": "section",
+                            "level": current_level,
+                            "title": current_section,
+                            "content": section_content,
+                            "file_path": file_path,
+                            "position": position,
+                            "content_type": "documentation",
+                        }
+                    )
 
-        # Process each header and its content
-        for i, (level, title, start_pos) in enumerate(headers):
-            # Determine the end position (next header or end of file)
-            end_pos = headers[i + 1][2] if i < len(headers) - 1 else len(content)
+                # Start a new section
+                current_level = len(header_match.group(1))
+                current_section = header_match.group(2)
+                current_content = []
+                position = i
 
-            # Extract section content
-            section_content = content[start_pos:end_pos].strip()
+            # Add line to current section content
+            elif current_section is not None:
+                current_content.append(line)
 
-            # Remove the header from the content
-            section_content = re.sub(
-                r"^#{1,6}\s+.+$", "", section_content, 1, re.MULTILINE
-            ).strip()
+        # Add the last section if there is one
+        if current_section:
+            section_content = "\n".join(current_content).strip()
+            sections.append(
+                {
+                    "type": "section",
+                    "level": current_level,
+                    "title": current_section,
+                    "content": section_content,
+                    "file_path": file_path,
+                    "position": position,
+                    "content_type": "documentation",
+                }
+            )
 
-            # Create section object
-            section = {
-                "type": "section",
-                "level": len(level),  # Number of # characters
-                "title": title,
-                "content": section_content,
-                "file_path": file_path,
-                "position": start_pos,
-            }
-
-            # Add subsections classification
-            if len(level) > 1:
-                # Find parent section
-                for potential_parent in reversed(sections):
-                    if potential_parent["level"] < len(level):
-                        section["parent_title"] = potential_parent["title"]
-                        break
-
-            # Extract code blocks if present
-            code_blocks = self._extract_code_blocks(section_content)
-            if code_blocks:
-                section["code_blocks"] = code_blocks
-
-            sections.append(section)
+        # Extract code blocks as separate elements
+        code_blocks = self._extract_code_blocks(content, file_path)
+        sections.extend(code_blocks)
 
         return sections
 
-    def _extract_code_blocks(self, content: str) -> List[Dict[str, Any]]:
+    def _extract_code_blocks(
+        self, content: str, file_path: str
+    ) -> List[Dict[str, Any]]:
         """
         Extract code blocks from Markdown content.
 
         Args:
             content: Markdown content
+            file_path: Path to the Markdown file
 
         Returns:
-            List of dictionaries with code block information
+            List of code block dictionaries
         """
         code_blocks = []
+        code_block_pattern = re.compile(r"```(\w*)\n(.*?)```", re.DOTALL)
 
-        # Pattern for fenced code blocks: ```language\ncode\n```
-        pattern = re.compile(r"```([a-zA-Z0-9]*)\n(.*?)\n```", re.DOTALL)
-
-        for match in pattern.finditer(content):
+        for i, match in enumerate(code_block_pattern.finditer(content)):
             language = match.group(1) or "text"
-            code = match.group(2)
+            code = match.group(2).strip()
+            position = match.start()
 
-            code_blocks.append(
-                {"type": "code_block", "language": language, "code": code}
-            )
+            # Check if this is a significant code block (not just a small example)
+            if len(code.split("\n")) > 2:
+                # Determine a title for the code block
+                lines_before = content[:position].split("\n")
+                header_match = None
+                for line in reversed(lines_before[-5:]):  # Look at the 5 lines before
+                    if re.match(r"^(#{1,6})\s+(.+)$", line):
+                        header_match = re.match(r"^(#{1,6})\s+(.+)$", line)
+                        break
+
+                title = (
+                    f"Code block ({language})"
+                    if not header_match
+                    else f"{header_match.group(2)} - Code Example"
+                )
+
+                code_blocks.append(
+                    {
+                        "type": "code_block",
+                        "language": language,
+                        "title": title,
+                        "content": code,
+                        "file_path": file_path,
+                        "position": position,
+                        "content_type": "documentation",
+                    }
+                )
 
         return code_blocks

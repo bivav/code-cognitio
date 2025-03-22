@@ -71,6 +71,8 @@ class SearchEngine:
         top_k: int = 5,
         content_filter: Optional[str] = None,
         min_score: float = 0.0,
+        type_filter: Optional[str] = None,
+        signature_filter: Optional[Dict[str, str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Search for chunks relevant to the query.
@@ -80,13 +82,101 @@ class SearchEngine:
             top_k: Number of results to return
             content_filter: Filter results by content type ('code' or 'documentation')
             min_score: Minimum similarity score threshold
+            type_filter: Filter by Python type (function, class, method, module)
+            signature_filter: Filter by function signature (e.g. parameter or return types)
 
         Returns:
             List of search results with similarity scores
         """
-        return self.backend.search(
-            query=query, top_k=top_k, content_filter=content_filter, min_score=min_score
+        # Get basic search results from the backend
+        results = self.backend.search(
+            query=query,
+            top_k=top_k * 3,  # Get more results to filter locally
+            content_filter=content_filter,
+            min_score=min_score,
         )
+
+        # Apply additional filters locally
+        filtered_results = []
+        for result in results:
+            chunk = result.get("chunk", {})
+
+            # Apply type filter if specified
+            if type_filter and chunk.get("type") != type_filter:
+                continue
+
+            # Apply signature filter if specified
+            if signature_filter and not self._matches_signature_filter(
+                chunk, signature_filter
+            ):
+                continue
+
+            filtered_results.append(result)
+
+            # Stop once we have enough results
+            if len(filtered_results) >= top_k:
+                break
+
+        return filtered_results[:top_k]
+
+    def _matches_signature_filter(
+        self, chunk: Dict[str, Any], signature_filter: Dict[str, str]
+    ) -> bool:
+        """
+        Check if a chunk matches the given signature filter.
+
+        Args:
+            chunk: The chunk to check
+            signature_filter: The signature filter to apply
+
+        Returns:
+            True if the chunk matches the filter, False otherwise
+        """
+        # For non-function chunks, no signature to match
+        if chunk.get("type") not in ["function", "method"]:
+            return False
+
+        # Get parameters list from either "parameters" or "params" field
+        parameters = chunk.get("parameters", chunk.get("params", []))
+
+        # Check parameter type
+        if "param_type" in signature_filter:
+            param_type = signature_filter["param_type"]
+            found = False
+            for param in parameters:
+                # Case insensitive matching for parameter type
+                param_type_value = param.get("type", "")
+                if param_type_value and param_type.lower() in param_type_value.lower():
+                    found = True
+                    break
+            if not found:
+                return False
+
+        # Check parameter name
+        if "param_name" in signature_filter:
+            param_name = signature_filter["param_name"]
+            found = False
+            for param in parameters:
+                # Case insensitive matching for parameter name
+                param_name_value = param.get("name", "")
+                if param_name_value and param_name.lower() in param_name_value.lower():
+                    found = True
+                    break
+            if not found:
+                return False
+
+        # Check return type
+        if "return_type" in signature_filter:
+            return_type = signature_filter["return_type"]
+            function_return_type = chunk.get("return_type", chunk.get("returns", ""))
+            # Case insensitive matching for return type
+            if (
+                not function_return_type
+                or return_type.lower() not in function_return_type.lower()
+            ):
+                return False
+
+        return True
 
     def build_index(self):
         """Build the search index from added chunks."""

@@ -32,6 +32,37 @@ def build_index(args):
     # Initialize text processor with specified options
     text_processor = TextProcessor(use_spacy=args.spacy)
 
+    # Parse file type filters
+    include_types = args.file_types.lower().split(",") if args.file_types else []
+    exclude_types = args.exclude_types.lower().split(",") if args.exclude_types else []
+
+    process_all_types = args.file_types == "all"
+
+    # Get supported file extensions
+    supported_extensions = set()
+    for ext, extractor in code_extractor.extractors.items():
+        if ext.startswith("."):  # Only consider extensions, not special filenames
+            ext_without_dot = ext[1:]  # Remove the leading dot
+            if process_all_types:
+                if ext_without_dot not in exclude_types:
+                    supported_extensions.add(ext)
+            elif ext_without_dot in include_types:
+                supported_extensions.add(ext)
+
+    # Add doc extractor extensions if needed
+    doc_extensions = doc_extractor.get_supported_extensions()
+    if process_all_types:
+        for ext in doc_extensions:
+            ext_without_dot = ext[1:] if ext.startswith(".") else ext
+            if ext_without_dot not in exclude_types:
+                supported_extensions.add(ext)
+    elif "md" in include_types or "markdown" in include_types:
+        supported_extensions.add(".md")
+    elif "rst" in include_types:
+        supported_extensions.add(".rst")
+
+    logger.info(f"Processing file types: {', '.join(sorted(supported_extensions))}")
+
     # Get all files
     files = []
     for path in args.paths:
@@ -48,15 +79,33 @@ def build_index(args):
     # Process files
     all_chunks = []
     for file_path in files:
+        filename = os.path.basename(file_path)
         _, ext = os.path.splitext(file_path)
+        ext = ext.lower()  # Normalize extension
 
         # Skip hidden files
         if os.path.basename(file_path).startswith("."):
             continue
 
+        # Skip files that don't match our filters
+        if (
+            not process_all_types
+            and ext not in supported_extensions
+            and filename not in code_extractor.file_patterns
+        ):
+            logger.info(f"Skipping {file_path} due to file type filters")
+            continue
+
         # Use appropriate extractor based on file extension
         if ext in code_extractor.get_supported_extensions():
             logger.info(f"Processing code file: {file_path}")
+            try:
+                chunks = code_extractor.extract_from_file(file_path)
+            except Exception as e:
+                logger.error(f"Error processing file {file_path}: {str(e)}")
+                continue
+        elif filename in code_extractor.file_patterns:
+            logger.info(f"Processing special file: {file_path}")
             try:
                 chunks = code_extractor.extract_from_file(file_path)
             except Exception as e:
@@ -102,12 +151,29 @@ def search(args):
         model_name=args.model, data_dir=args.data_dir, use_gpu=args.gpu
     )
 
+    # Load the index
+    if not search_engine.load_index():
+        logger.warning("Failed to load search index. Please build the index first.")
+        print("No index found. Please build the index first using the 'build' command.")
+        return
+
+    # Build signature filter if specified
+    signature_filter = {}
+    if args.param_type:
+        signature_filter["param_type"] = args.param_type
+    if args.return_type:
+        signature_filter["return_type"] = args.return_type
+    if args.param_name:
+        signature_filter["param_name"] = args.param_name
+
     # Perform search
     results = search_engine.search(
         query=args.query,
         top_k=args.top_k,
         content_filter=args.filter,
         min_score=args.min_score,
+        type_filter=args.type,
+        signature_filter=signature_filter if signature_filter else None,
     )
 
     if not results:
@@ -134,9 +200,78 @@ def search(args):
         if "lineno" in chunk:
             print(f"Line: {chunk['lineno']}")
 
+        # Display document title for documentation chunks
+        if chunk.get("content_type") == "documentation" and "document_title" in chunk:
+            print(f"Document: {chunk['document_title']}")
+
+        # Display section title for section chunks
+        if chunk.get("type") == "section" and "title" in chunk:
+            print(f"Section: {chunk['title']}")
+
+        # Display readable name for functions/methods if available
+        if "readable_name" in chunk:
+            print(f"Description: {chunk['readable_name']}")
+
+        # Display patterns if available
+        if "patterns" in chunk and chunk["patterns"]:
+            print(f"Patterns: {', '.join(chunk['patterns'])}")
+
+        # Display key operations for functions
+        if "key_operations" in chunk and chunk["key_operations"]:
+            print(f"Key Operations: {', '.join(chunk['key_operations'][:3])}")
+
+        # Display usage information
+        if "usage" in chunk and "common_usage" in chunk.get("usage", {}):
+            usage = chunk["usage"]
+            if usage.get("common_usage"):
+                print(f"Common Usage: {', '.join(usage['common_usage'])}")
+            if "call_count" in usage:
+                print(f"Called {usage['call_count']} times in this file")
+
+        # Display relationships if available
+        if "relationships" in chunk and chunk["relationships"]:
+            rel_info = []
+            for rel in chunk["relationships"][:3]:  # Limit to 3 relationships
+                rel_info.append(f"{rel['type']} {rel['name']}")
+            print(f"Relationships: {', '.join(rel_info)}")
+
         # Display content
         print(f"\n{content}\n")
+        print(f"Location: {chunk['file_path']}")
         print("-" * 80)
+
+
+def list_file_types():
+    """List all supported file types."""
+    code_extractor = CodeExtractor()
+    doc_extractor = DocExtractor()
+
+    supported_extensions = {}
+
+    # Get code extractors
+    for ext, extractor in code_extractor.extractors.items():
+        if ext.startswith("."):
+            ext_without_dot = ext[1:]
+            extractor_type = type(extractor).__name__
+            supported_extensions[ext_without_dot] = extractor_type
+
+    # Get special file patterns
+    for filename, extractor in code_extractor.file_patterns.items():
+        extractor_type = type(extractor).__name__
+        supported_extensions[filename] = extractor_type
+
+    # Get doc extensions
+    for ext in doc_extractor.get_supported_extensions():
+        ext_without_dot = ext[1:] if ext.startswith(".") else ext
+        supported_extensions[ext_without_dot] = "DocExtractor"
+
+    # Print results
+    print("\nSupported file types:\n")
+    print(f"{'Extension':<15} {'Extractor':<25}")
+    print("-" * 40)
+
+    for ext, extractor in sorted(supported_extensions.items()):
+        print(f"{ext:<15} {extractor:<25}")
 
 
 def main():
@@ -173,6 +308,21 @@ def main():
         action="store_true",
         help="Use spaCy for text processing (more accurate but slower)",
     )
+    build_parser.add_argument(
+        "--file-types",
+        type=str,
+        default="all",
+        help="Comma-separated list of file types to process (e.g., py,js,dockerfile). Use 'all' for all supported types",
+    )
+    build_parser.add_argument(
+        "--exclude-types",
+        type=str,
+        default="",
+        help="Comma-separated list of file types to exclude (e.g., js,jsx)",
+    )
+
+    # List file types command
+    subparsers.add_parser("list-file-types", help="List all supported file types")
 
     # Search command
     search_parser = subparsers.add_parser(
@@ -194,6 +344,28 @@ def main():
         default=0.0,
         help="Minimum similarity score threshold",
     )
+    # Add new search filters
+    search_parser.add_argument(
+        "--type",
+        type=str,
+        choices=["function", "method", "class", "module"],
+        help="Filter results by code object type",
+    )
+    search_parser.add_argument(
+        "--param-type",
+        type=str,
+        help="Filter by parameter type (e.g., 'str', 'int', 'List')",
+    )
+    search_parser.add_argument(
+        "--return-type",
+        type=str,
+        help="Filter by return type (e.g., 'bool', 'Dict', 'None')",
+    )
+    search_parser.add_argument(
+        "--param-name",
+        type=str,
+        help="Filter by parameter name (e.g., 'id', 'name', 'data')",
+    )
 
     args = parser.parse_args()
 
@@ -202,6 +374,8 @@ def main():
         build_index(args)
     elif args.command == "search":
         search(args)
+    elif args.command == "list-file-types":
+        list_file_types()
     else:
         parser.print_help()
 
