@@ -26,7 +26,25 @@ def build_index(args):
 
     # Parse file type filters
     include_types = args.file_types.lower().split(",") if args.file_types else []
-    exclude_types = args.exclude_types.lower().split(",") if args.exclude_types else []
+
+    # Default exclusions + any user-specified exclusions
+    default_exclude = [
+        "pyc",
+        "pyo",
+        "DS_Store",
+        "git",
+        "svn",
+        "bzr",
+        "hg",
+        "idea",
+        "vscode",
+        "cache",
+        "egg-info",
+    ]
+    user_exclude = args.exclude_types.lower().split(",") if args.exclude_types else []
+    exclude_types = default_exclude + [
+        ext for ext in user_exclude if ext and ext not in default_exclude
+    ]
 
     # Get all files
     files = []
@@ -34,8 +52,49 @@ def build_index(args):
         if os.path.isfile(path):
             files.append(path)
         elif os.path.isdir(path):
-            for root, _, filenames in os.walk(path):
+            for root, dirs, filenames in os.walk(path):
+                # Skip common directories that shouldn't be indexed
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if not (
+                        d.startswith(".")  # Skip hidden directories
+                        or d
+                        in [
+                            "__pycache__",
+                            "node_modules",
+                            "venv",
+                            ".venv",
+                            "env",
+                            ".git",
+                            ".svn",
+                            ".idea",
+                            ".vscode",
+                            "dist",
+                            "build",
+                            "target",
+                            "out",
+                            "bin",
+                            "obj",
+                            "tmp",
+                            "temp",
+                            "__pypackages__",
+                            "site-packages",
+                            ".pytest_cache",
+                            ".mypy_cache",
+                            ".ruff_cache",
+                            ".coverage",
+                        ]
+                    )
+                ]
+
                 for filename in filenames:
+                    # Skip files that shouldn't be indexed
+                    if any(
+                        filename.endswith(f".{ext}") for ext in exclude_types
+                    ) or filename.startswith("."):
+                        continue
+
                     file_path = os.path.join(root, filename)
                     files.append(file_path)
 
@@ -226,7 +285,7 @@ def main():
     )
     build_parser.add_argument(
         "--exclude-types",
-        help="Comma-separated list of file extensions to exclude",
+        help="Comma-separated list of file extensions to exclude (in addition to defaults like pyc, DS_Store, git, etc.)",
         default="",
     )
     build_parser.add_argument(
