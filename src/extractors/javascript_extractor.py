@@ -154,47 +154,50 @@ class JavaScriptExtractor(BaseExtractor):
 
     def _parse_jsdoc(self, jsdoc_content: str) -> Dict[str, Any]:
         """
-        Parse JSDoc comment content.
+        Parse JSDoc comment into structured data.
 
         Args:
-            jsdoc_content: Content of the JSDoc comment
+            jsdoc_content: Content of JSDoc comment
 
         Returns:
-            Parsed JSDoc data
+            Dictionary with parsed JSDoc data
         """
-        parsed = {
+        parsed: Dict[str, Any] = {
             "description": "",
             "params": [],
             "returns": None,
             "throws": [],
             "examples": [],
+            "deprecated": False,
+            "since": "",
+            "see": [],
+            "todo": [],
         }
 
-        # Extract description (first line until @tag)
-        lines = jsdoc_content.split("\n")
+        lines = [line.strip() for line in jsdoc_content.strip().split("\n")]
         description_lines = []
 
-        in_description = True
+        # Skip the opening /** and closing */
+        if lines and "/**" in lines[0]:
+            lines[0] = lines[0].replace("/**", "").strip()
+        if lines and "*/" in lines[-1]:
+            lines[-1] = lines[-1].replace("*/", "").strip()
+
+        # Remove leading asterisks
+        lines = [line[1:].strip() if line.startswith("*") else line for line in lines]
+
+        # Process each line
         for line in lines:
-            line = line.strip().lstrip("* ")
-            if not line:
-                continue
-
-            if line.startswith("@") and in_description:
-                in_description = False
-
-            if in_description:
-                description_lines.append(line)
-            else:
-                # Parse tags
+            if line.startswith("@"):
+                # Handle tags
                 if line.startswith("@param"):
                     param_match = re.match(
-                        r"@param\s+(?:{(?P<type>[^}]*)})?\s*(?P<name>[^\s]+)?\s*(?P<desc>.*)?",
+                        r"@param\s+(?:{(?P<type>[^}]*)})?\s*(?P<n>[^\s]+)?\s*(?P<desc>.*)?",
                         line,
                     )
                     if param_match:
                         param = {
-                            "name": param_match.group("name") or "",
+                            "name": param_match.group("n") or "",
                             "type": param_match.group("type") or "",
                             "description": param_match.group("desc") or "",
                         }
@@ -224,6 +227,17 @@ class JavaScriptExtractor(BaseExtractor):
 
                 elif line.startswith("@example"):
                     parsed["examples"].append(line.replace("@example", "").strip())
+
+                elif line.startswith("@deprecated"):
+                    parsed["deprecated"] = True
+
+                elif line.startswith("@see"):
+                    parsed["see"].append(line.replace("@see", "").strip())
+
+                elif line.startswith("@todo"):
+                    parsed["todo"].append(line.replace("@todo", "").strip())
+            else:
+                description_lines.append(line)
 
         parsed["description"] = " ".join(description_lines).strip()
         return parsed
@@ -531,7 +545,7 @@ class JavaScriptExtractor(BaseExtractor):
                 param_info["type"] = param_type
 
             if is_rest:
-                param_info["is_rest"] = True
+                param_info["is_rest"] = "true"
 
             params.append(param_info)
 

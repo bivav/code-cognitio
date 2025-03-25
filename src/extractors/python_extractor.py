@@ -421,7 +421,7 @@ class PythonExtractor(BaseExtractor):
             # Find the line number
             line_num = content[: match.start()].count("\n") + 1
 
-            func_info = {
+            func_info: Dict[str, Any] = {
                 "type": "function",
                 "name": func_name,
                 "full_name": func_name,
@@ -442,7 +442,7 @@ class PythonExtractor(BaseExtractor):
             # Find the line number
             line_num = content[: match.start()].count("\n") + 1
 
-            class_info = {
+            class_info: Dict[str, Any] = {
                 "type": "class",
                 "name": class_name,
                 "docstring": docstring,
@@ -466,22 +466,24 @@ class PythonExtractor(BaseExtractor):
                     class_end = i
                     break
 
-            class_content = "\n".join(class_content[: class_end if class_end else None])
+            class_content_str: str = "\n".join(
+                class_content[: class_end if class_end else None]
+            )
 
             # Find methods in this class
             method_pattern = re.compile(
                 r'def\s+(\w+)\s*\([^)]*\)[^:]*:(?:\s*"""(.*?)""")?', re.DOTALL
             )
-            for m_match in method_pattern.finditer(class_content):
+            for m_match in method_pattern.finditer(class_content_str):
                 method_name = m_match.group(1)
                 method_docstring = m_match.group(2) or ""
 
                 # Find the line number
-                method_line_num = line_num + class_content[: m_match.start()].count(
+                method_line_num = line_num + class_content_str[: m_match.start()].count(
                     "\n"
                 )
 
-                method_info = {
+                method_info: Dict[str, Any] = {
                     "type": "method",
                     "name": method_name,
                     "full_name": f"{class_name}.{method_name}",
@@ -499,66 +501,41 @@ class PythonExtractor(BaseExtractor):
     def _extract_function_info(
         self, node: ast.FunctionDef, file_path: str, class_name: Optional[str] = None
     ) -> Dict[str, Any]:
-        """
-        Extract information from a function definition node.
-
-        Args:
-            node: The function definition node
-            file_path: Path to the file containing the function
-            class_name: Name of the class if this is a method
-
-        Returns:
-            Dictionary containing function information
-        """
-        # Get docstring if available
-        docstring = ast.get_docstring(node)
-
-        # Extract parameter information
-        params = []
+        """Extract information about a function."""
+        # Get function parameters
+        params: List[Dict[str, str]] = []
         for arg in node.args.args:
             param_info = {"name": arg.arg}
-
-            # Extract parameter type if available
             if arg.annotation:
-                if isinstance(arg.annotation, ast.Name):
-                    param_info["type"] = arg.annotation.id
-                elif isinstance(arg.annotation, ast.Attribute):
-                    param_info["type"] = self._format_attribute(arg.annotation)
-                elif isinstance(arg.annotation, ast.Subscript):
-                    param_info["type"] = self._format_subscript(arg.annotation)
-                else:
+                if hasattr(ast, "unparse"):  # Python 3.9+
                     param_info["type"] = ast.unparse(arg.annotation)
-
+                else:
+                    param_info["type"] = "unknown"
             params.append(param_info)
 
-        # Extract return type if available
+        # Get return type
         return_type = None
         if node.returns:
-            if isinstance(node.returns, ast.Name):
-                return_type = node.returns.id
-            elif isinstance(node.returns, ast.Attribute):
-                return_type = self._format_attribute(node.returns)
-            elif isinstance(node.returns, ast.Subscript):
-                return_type = self._format_subscript(node.returns)
-            else:
+            if hasattr(ast, "unparse"):  # Python 3.9+
                 return_type = ast.unparse(node.returns)
+            else:
+                return_type = "unknown"
 
-        # Parse function name into a meaningful phrase
-        readable_name = self._function_name_to_phrase(node.name)
+        # Extract docstring
+        docstring = ast.get_docstring(node) or ""
 
-        # Create function information
-        func_info = {
-            "type": "method" if class_name else "function",
+        # Basic function info
+        func_info: Dict[str, Any] = {
             "name": node.name,
-            "readable_name": readable_name,
-            "class_name": class_name,
-            "full_name": f"{class_name}.{node.name}" if class_name else node.name,
-            "docstring": docstring if docstring else "",
+            "type": "method" if class_name else "function",
+            "class": class_name,
             "file_path": file_path,
             "lineno": node.lineno,
             "params": params,
             "return_type": return_type,
+            "docstring": docstring,
             "content_type": "code",
+            "full_name": f"{class_name}.{node.name}" if class_name else node.name,
         }
 
         # Extract function body
@@ -1169,298 +1146,225 @@ class PythonExtractor(BaseExtractor):
     def _analyze_function_usage(
         self, content: str, extracted_items: List[Dict[str, Any]]
     ) -> Dict[str, Dict[str, Any]]:
-        """
-        Analyze how functions are used within a file's content.
-
-        Args:
-            content: The Python file content
-            extracted_items: List of extracted functions and classes
-
-        Returns:
-            Dictionary mapping function names to usage information
-        """
-        usage_info = {}
+        """Analyze how functions are used in the code."""
+        usage_data: Dict[str, Dict[str, Any]] = {}
 
         try:
             tree = ast.parse(content)
+        except Exception as e:
+            logger.error(f"Failed to parse content for usage analysis: {str(e)}")
+            return usage_data
 
-            # Build a map of defined functions
-            defined_functions = {}
-            for item in extracted_items:
-                if item["type"] in ["function", "method"]:
-                    defined_functions[item["name"]] = item["full_name"]
+        # Build a map of function names to their extracted info
+        func_map: Dict[str, Dict[str, Any]] = {}
+        for item in extracted_items:
+            if item.get("type") in ["function", "method"]:
+                func_map[item["name"]] = item
 
-            # Find all function calls
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Call):
-                    called_func = None
+        # Analyze function calls
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                # Get function name
+                func_name = None
+                if isinstance(node.func, ast.Name):
+                    func_name = node.func.id
+                elif isinstance(node.func, ast.Attribute):
+                    if isinstance(node.func.value, ast.Name):
+                        func_name = f"{node.func.value.id}.{node.func.attr}"
 
-                    # Direct function call: func()
-                    if isinstance(node.func, ast.Name):
-                        called_func = node.func.id
+                if func_name and func_name in func_map:
+                    # Initialize usage data for this function
+                    if func_name not in usage_data:
+                        usage_data[func_name] = {
+                            "call_count": 0,
+                            "contexts": set(),
+                            "arg_patterns": [],
+                        }
 
-                    # Method call: obj.method()
-                    elif isinstance(node.func, ast.Attribute) and isinstance(
-                        node.func.value, ast.Name
-                    ):
-                        # We only track method calls on objects, not chained calls
-                        called_func = f"{node.func.value.id}.{node.func.attr}"
-
-                    if called_func and called_func in defined_functions:
-                        func_id = defined_functions[called_func]
-
-                        if func_id not in usage_info:
-                            usage_info[func_id] = {
-                                "call_count": 0,
-                                "callers": set(),
-                                "arg_patterns": [],
-                                "context_keywords": set(),
-                            }
-
-                        usage_info[func_id]["call_count"] += 1
-
-                        # Track the calling function
-                        for parent in ast.walk(tree):
-                            if (
-                                isinstance(parent, ast.FunctionDef)
-                                and parent != node
-                                and node in ast.walk(parent)
-                            ):
-                                if parent.name in defined_functions:
-                                    caller = defined_functions[parent.name]
-                                    usage_info[func_id]["callers"].add(caller)
-
-                        # Analyze argument patterns
-                        arg_pattern = self._analyze_arg_pattern(node)
-                        if arg_pattern:
-                            usage_info[func_id]["arg_patterns"].append(arg_pattern)
-
-                        # Get surrounding context
-                        context = self._get_call_context(node, tree)
-                        if context:
-                            usage_info[func_id]["context_keywords"].update(context)
-
-            # Convert sets to lists for JSON serialization
-            for func_id, info in usage_info.items():
-                info["callers"] = list(info["callers"])
-                info["context_keywords"] = list(info["context_keywords"])
-
-                # Analyze arg patterns to find common usage
-                if info["arg_patterns"]:
-                    info["common_usage"] = self._determine_common_usage(
-                        info["arg_patterns"]
+                    # Update usage data
+                    usage_data[func_name]["call_count"] = (
+                        int(usage_data[func_name].get("call_count", 0)) + 1
                     )
 
-        except Exception as e:
-            logger.error(f"Error analyzing function usage: {str(e)}")
+                    # Get call context
+                    context = self._get_call_context(node, tree)
+                    if context:
+                        contexts = usage_data[func_name].get("contexts", set())
+                        if not isinstance(contexts, set):
+                            contexts = set()
+                        contexts.update(context)
+                        usage_data[func_name]["contexts"] = contexts
 
-        return usage_info
+                    # Analyze argument pattern
+                    arg_pattern = self._analyze_arg_pattern(node)
+                    if arg_pattern:
+                        arg_patterns = usage_data[func_name].get("arg_patterns", [])
+                        if not isinstance(arg_patterns, list):
+                            arg_patterns = []
+                        arg_patterns.append(arg_pattern)
+                        usage_data[func_name]["arg_patterns"] = arg_patterns
 
-    def _analyze_arg_pattern(self, call_node: ast.Call) -> Dict[str, Any]:
-        """
-        Analyze the argument pattern of a function call.
-
-        Args:
-            call_node: The function call node
-
-        Returns:
-            Dictionary with argument pattern information or None
-        """
-        try:
-            args_info = {
-                "positional_count": len(call_node.args),
-                "keyword_count": len(call_node.keywords),
-                "total_args": len(call_node.args) + len(call_node.keywords),
-                "keyword_args": [kw.arg for kw in call_node.keywords if kw.arg],
-            }
-
-            # Categorize common patterns
-            if args_info["positional_count"] == 0 and args_info["keyword_count"] == 0:
-                args_info["pattern"] = "no_args"
-            elif args_info["positional_count"] > 0 and args_info["keyword_count"] == 0:
-                args_info["pattern"] = "positional_only"
-            elif args_info["positional_count"] == 0 and args_info["keyword_count"] > 0:
-                args_info["pattern"] = "keyword_only"
+        # Process usage data
+        for func_name, data in usage_data.items():
+            # Convert contexts to list for JSON serialization
+            contexts = data.get("contexts", set())
+            if isinstance(contexts, set):
+                data["contexts"] = list(contexts)
             else:
-                args_info["pattern"] = "mixed"
+                data["contexts"] = []
 
-            return args_info
-        except Exception as e:
-            logger.error(f"Error analyzing argument pattern: {str(e)}")
-            return None
+            # Determine common usage patterns
+            arg_patterns = data.get("arg_patterns", [])
+            if isinstance(arg_patterns, list) and arg_patterns:
+                data["common_usage"] = self._determine_common_usage(arg_patterns)
+            else:
+                data["common_usage"] = {}
+
+        return usage_data
 
     def _get_call_context(self, call_node: ast.Call, tree: ast.Module) -> Set[str]:
-        """
-        Extract context keywords from the surroundings of a function call.
+        """Get the context in which a function is called."""
+        context: Set[str] = set()
 
-        Args:
-            call_node: The function call node
-            tree: The AST tree
+        for node in ast.walk(tree):
+            if isinstance(
+                node, (ast.FunctionDef, ast.AsyncFunctionDef)
+            ) and call_node in ast.walk(node):
+                context.add(f"function:{node.name}")
+            elif isinstance(node, ast.ClassDef) and call_node in ast.walk(node):
+                context.add(f"class:{node.name}")
 
-        Returns:
-            Set of context keywords
-        """
-        context_keywords = set()
+        return context
 
-        try:
-            # Look at parent nodes for context
-            for parent in ast.walk(tree):
-                if hasattr(parent, "body") and any(
-                    call_node in ast.walk(child) for child in parent.body
-                ):
-                    # If we're in an if statement condition, that provides context
-                    if isinstance(parent, ast.If):
-                        # Extract variable names from the test condition
-                        for node in ast.walk(parent.test):
-                            if isinstance(node, ast.Name):
-                                context_keywords.add(node.id)
+    def _analyze_arg_pattern(self, call_node: ast.Call) -> Dict[str, Any]:
+        """Analyze the argument pattern of a function call."""
+        pattern: Dict[str, Any] = {
+            "arg_count": len(call_node.args) + len(call_node.keywords),
+            "arg_types": [],
+            "arg_names": [],
+            "has_varargs": False,
+            "has_kwargs": False,
+        }
 
-                    # If we're in a loop, that's contextual
-                    elif isinstance(parent, (ast.For, ast.While)):
-                        context_keywords.add("in_loop")
+        # Analyze positional arguments
+        for arg in call_node.args:
+            arg_type = self._get_arg_type(arg)
+            if arg_type:
+                pattern["arg_types"].append(arg_type)
 
-                    # If we're in a try/except, that's contextual
-                    elif isinstance(parent, ast.Try):
-                        context_keywords.add("in_exception_handler")
+        # Analyze keyword arguments
+        for keyword in call_node.keywords:
+            if keyword.arg is None:
+                pattern["has_kwargs"] = True
+            else:
+                pattern["arg_names"].append(keyword.arg)
+                arg_type = self._get_arg_type(keyword.value)
+                if arg_type:
+                    pattern["arg_types"].append(arg_type)
 
-                    # If we're in an assignment, extract the target variable
-                    elif isinstance(parent, ast.Assign):
-                        for target in parent.targets:
-                            if isinstance(target, ast.Name):
-                                context_keywords.add(f"assigned_to_{target.id}")
+        return pattern
 
-                    # For error handling
-                    elif isinstance(parent, ast.ExceptHandler):
-                        context_keywords.add("in_error_handler")
+    def _get_arg_type(self, node: ast.AST) -> Optional[str]:
+        """Get the type of an argument node."""
+        if isinstance(node, ast.Num):
+            return "number"
+        elif isinstance(node, ast.Str):
+            return "string"
+        elif isinstance(node, ast.List):
+            return "list"
+        elif isinstance(node, ast.Dict):
+            return "dict"
+        elif isinstance(node, ast.Name):
+            return "variable"
+        elif isinstance(node, ast.Call):
+            return "function_call"
+        return None
 
-                    # For context managers (with statement)
-                    elif isinstance(parent, ast.With):
-                        context_keywords.add("in_context_manager")
+    def _determine_common_usage(
+        self, arg_patterns: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Determine common usage patterns from argument patterns."""
+        if not arg_patterns:
+            return {}
 
-        except Exception as e:
-            logger.error(f"Error getting call context: {str(e)}")
+        # Initialize counters
+        usage_stats: Dict[str, Any] = {
+            "total_calls": len(arg_patterns),
+            "arg_counts": {},
+            "arg_types": {},
+            "common_names": {},
+            "patterns": [],
+        }
 
-        return context_keywords
-
-    def _determine_common_usage(self, arg_patterns: List[Dict[str, Any]]) -> List[str]:
-        """
-        Determine common usage patterns from argument patterns.
-
-        Args:
-            arg_patterns: List of argument pattern dictionaries
-
-        Returns:
-            List of common usage pattern descriptions
-        """
-        common_patterns = []
-        pattern_counts = {}
-        keyword_counts = {}
-
-        # Count patterns and keywords
+        # Analyze patterns
         for pattern in arg_patterns:
-            pattern_type = pattern.get("pattern", "unknown")
-
-            if pattern_type not in pattern_counts:
-                pattern_counts[pattern_type] = 0
-            pattern_counts[pattern_type] += 1
-
-            for keyword in pattern.get("keyword_args", []):
-                if keyword not in keyword_counts:
-                    keyword_counts[keyword] = 0
-                keyword_counts[keyword] += 1
-
-        # Determine most common pattern
-        most_common_pattern = max(
-            pattern_counts.items(), key=lambda x: x[1], default=(None, 0)
-        )
-        if most_common_pattern[0]:
-            pattern_percentage = (most_common_pattern[1] / len(arg_patterns)) * 100
-            if pattern_percentage > 50:  # If more than 50% of calls use this pattern
-                if most_common_pattern[0] == "no_args":
-                    common_patterns.append("typically called with no arguments")
-                elif most_common_pattern[0] == "positional_only":
-                    common_patterns.append(
-                        "typically called with positional arguments only"
-                    )
-                elif most_common_pattern[0] == "keyword_only":
-                    common_patterns.append(
-                        "typically called with keyword arguments only"
-                    )
-                elif most_common_pattern[0] == "mixed":
-                    common_patterns.append(
-                        "typically called with both positional and keyword arguments"
-                    )
-
-        # Determine most common keywords
-        common_keywords = []
-        for keyword, count in keyword_counts.items():
-            keyword_percentage = (count / len(arg_patterns)) * 100
-            if keyword_percentage > 30:  # If more than 30% of calls use this keyword
-                common_keywords.append(keyword)
-
-        if common_keywords:
-            common_patterns.append(
-                f"commonly used with keywords: {', '.join(common_keywords)}"
+            # Count number of arguments
+            arg_count = pattern.get("arg_count", 0)
+            usage_stats["arg_counts"][arg_count] = (
+                usage_stats["arg_counts"].get(arg_count, 0) + 1
             )
 
-        return common_patterns
+            # Track argument types
+            for arg_type in pattern.get("arg_types", []):
+                usage_stats["arg_types"][arg_type] = (
+                    usage_stats["arg_types"].get(arg_type, 0) + 1
+                )
+
+            # Track common argument names
+            for arg_name in pattern.get("arg_names", []):
+                usage_stats["common_names"][arg_name] = (
+                    usage_stats["common_names"].get(arg_name, 0) + 1
+                )
+
+        return usage_stats
 
     def _build_code_map(self, tree: ast.Module) -> Dict[str, Dict[str, Any]]:
-        """
-        Build a map of all code objects in the module for context referencing.
+        """Build a map of code objects and their relationships."""
+        code_map: Dict[str, Dict[str, Any]] = {}
 
-        Args:
-            tree: The AST tree of the module
-
-        Returns:
-            Dictionary mapping node IDs to information about code objects
-        """
-        code_map = {}
-
-        # Collect all classes with their locations
         for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef):
-                code_map[f"class:{node.name}"] = {
-                    "type": "class",
-                    "name": node.name,
-                    "lineno": node.lineno,
-                    "end_lineno": getattr(
-                        node, "end_lineno", node.lineno + len(node.body)
-                    ),
-                    "methods": [],
-                    "attributes": [],
-                }
-
-                # Collect methods and attributes
-                for item in node.body:
-                    if isinstance(item, ast.FunctionDef):
-                        code_map[f"class:{node.name}"]["methods"].append(item.name)
-                        code_map[f"method:{node.name}.{item.name}"] = {
-                            "type": "method",
-                            "name": item.name,
-                            "class_name": node.name,
-                            "lineno": item.lineno,
-                            "end_lineno": getattr(
-                                item, "end_lineno", item.lineno + len(item.body)
-                            ),
-                        }
-                    elif isinstance(item, ast.Assign):
-                        for target in item.targets:
-                            if isinstance(target, ast.Name):
-                                code_map[f"class:{node.name}"]["attributes"].append(
-                                    target.id
+            if isinstance(node, ast.FunctionDef):
+                # Track function calls within this function
+                calls: List[Dict[str, Any]] = []
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Call):
+                        if isinstance(child.func, ast.Name):
+                            calls.append({"name": child.func.id, "type": "direct"})
+                        elif isinstance(child.func, ast.Attribute):
+                            if isinstance(child.func.value, ast.Name):
+                                calls.append(
+                                    {
+                                        "name": f"{child.func.value.id}.{child.func.attr}",
+                                        "type": "method",
+                                    }
                                 )
 
-            elif isinstance(node, ast.FunctionDef) and not hasattr(
-                node, "parent_class"
-            ):
                 code_map[f"function:{node.name}"] = {
                     "type": "function",
                     "name": node.name,
+                    "calls": calls,
                     "lineno": node.lineno,
-                    "end_lineno": getattr(
-                        node, "end_lineno", node.lineno + len(node.body)
-                    ),
+                }
+
+            elif isinstance(node, ast.ClassDef):
+                # Track methods and attributes
+                methods: List[str] = []
+                attributes: List[str] = []
+
+                for child in node.body:
+                    if isinstance(child, ast.FunctionDef):
+                        methods.append(child.name)
+                    elif isinstance(child, ast.Assign):
+                        for target in child.targets:
+                            if isinstance(target, ast.Name):
+                                attributes.append(target.id)
+
+                code_map[f"class:{node.name}"] = {
+                    "type": "class",
+                    "name": node.name,
+                    "methods": methods,
+                    "attributes": attributes,
+                    "lineno": node.lineno,
                 }
 
         return code_map
@@ -1468,252 +1372,83 @@ class PythonExtractor(BaseExtractor):
     def _analyze_code_relationships(
         self, tree: ast.Module, code_map: Dict[str, Dict[str, Any]]
     ) -> Dict[str, List[Dict[str, str]]]:
-        """
-        Analyze relationships between code objects (e.g., function calls, inheritance).
+        """Analyze relationships between different code elements."""
+        relationships: Dict[str, List[Dict[str, str]]] = {}
 
-        Args:
-            tree: The AST tree of the module
-            code_map: Map of code objects
-
-        Returns:
-            Dictionary mapping node IDs to their relationships
-        """
-        relationships = {}
-
-        # Analyze function calls
         for node in ast.walk(tree):
-            # Track containing function/method for this part of the AST
-            containing_function = None
-            containing_class = None
-
-            # Find the parent function/method for call nodes
-            for parent in ast.walk(tree):
-                if isinstance(parent, ast.FunctionDef) and node in ast.walk(parent):
-                    containing_function = parent.name
-                    # Check if this is a method
-                    for cls_node in ast.walk(tree):
-                        if (
-                            isinstance(cls_node, ast.ClassDef)
-                            and parent in cls_node.body
-                        ):
-                            containing_class = cls_node.name
-                            break
-                    break
-
-            # Analyze function calls
             if isinstance(node, ast.Call):
-                # Get the caller ID
-                caller_id = None
-                if containing_function and containing_class:
-                    caller_id = f"method:{containing_class}.{containing_function}"
-                elif containing_function:
-                    caller_id = f"function:{containing_function}"
+                # Handle function calls
+                if isinstance(node.func, ast.Name):
+                    caller = self._get_enclosing_function_name(node, tree)
+                    if caller and node.func.id in code_map:
+                        self._add_code_relationship(
+                            relationships, caller, node.func.id, "calls", code_map
+                        )
 
-                if caller_id:
-                    # Get the called function
-                    if isinstance(node.func, ast.Name):
-                        called_id = f"function:{node.func.id}"
-                        if called_id in code_map:
-                            if caller_id not in relationships:
-                                relationships[caller_id] = []
-                            relationships[caller_id].append(
-                                {
-                                    "type": "calls",
-                                    "target": called_id,
-                                    "name": code_map[called_id]["name"],
-                                }
-                            )
-                    elif isinstance(node.func, ast.Attribute) and isinstance(
-                        node.func.value, ast.Name
-                    ):
-                        # Method call
-                        called_id = f"method:{node.func.value.id}.{node.func.attr}"
-                        if called_id in code_map:
-                            if caller_id not in relationships:
-                                relationships[caller_id] = []
-                            relationships[caller_id].append(
-                                {
-                                    "type": "calls",
-                                    "target": called_id,
-                                    "name": f"{node.func.value.id}.{node.func.attr}",
-                                }
-                            )
-
-            # Analyze class inheritance
             elif isinstance(node, ast.ClassDef):
-                class_id = f"class:{node.name}"
-
-                # Check base classes
+                # Handle class inheritance
                 for base in node.bases:
-                    if isinstance(base, ast.Name):
-                        base_id = f"class:{base.id}"
-                        if base_id in code_map:
-                            if class_id not in relationships:
-                                relationships[class_id] = []
-                            relationships[class_id].append(
-                                {
-                                    "type": "inherits_from",
-                                    "target": base_id,
-                                    "name": base.id,
-                                }
-                            )
+                    if isinstance(base, ast.Name) and base.id in code_map:
+                        self._add_code_relationship(
+                            relationships, node.name, base.id, "inherits from", code_map
+                        )
 
         return relationships
 
     def _extract_code_context(
         self,
         node: ast.AST,
-        parent: ast.AST,
+        parent: Optional[ast.AST],
         code_map: Dict[str, Dict[str, Any]],
         file_path: str,
         in_class: bool = False,
     ) -> Dict[str, Any]:
-        """
-        Extract surrounding code context for a node.
+        """Extract context information for a code node."""
+        context: Dict[str, Any] = {
+            "file": file_path,
+            "type": type(node).__name__,
+        }
 
-        Args:
-            node: The AST node
-            parent: Parent node or tree
-            code_map: Map of code objects
-            file_path: Path to the file
-            in_class: Whether the node is inside a class
+        if hasattr(node, "lineno"):
+            context["lineno"] = getattr(node, "lineno")
 
-        Returns:
-            Dictionary with context information
-        """
-        context = {}
-
-        # Get the node's type and name
-        node_type = None
-        node_name = None
-
-        if isinstance(node, ast.FunctionDef):
-            node_type = "method" if in_class else "function"
-            node_name = node.name
-        elif isinstance(node, ast.ClassDef):
-            node_type = "class"
-            node_name = node.name
-
-        if not node_type or not node_name:
-            return {}
-
-        # Get file context (imports, module-level variables)
-        if isinstance(parent, ast.Module):
-            imports = []
-            global_vars = []
-
-            for item in parent.body:
-                # Collect imports
-                if isinstance(item, (ast.Import, ast.ImportFrom)):
-                    try:
-                        import_text = (
-                            ast.unparse(item).strip()
-                            if hasattr(ast, "unparse")
-                            else f"import at line {item.lineno}"
-                        )
-                        imports.append(import_text)
-                    except Exception:
-                        imports.append(f"import at line {item.lineno}")
-
-                # Collect global variables
-                elif isinstance(item, ast.Assign) and all(
-                    isinstance(target, ast.Name) for target in item.targets
-                ):
-                    for target in item.targets:
-                        global_vars.append(target.id)
-
-            if imports:
-                context["imports"] = imports[:10]  # Limit to avoid too much data
-
-            if global_vars:
-                context["global_variables"] = global_vars
-
-        # Get neighboring functions/classes
-        if node_type == "function":
-            neighboring_funcs = []
-
-            for key, info in code_map.items():
-                if key.startswith("function:") and info["name"] != node_name:
-                    # Check if they're close to each other (within 20 lines)
-                    if abs(info["lineno"] - node.lineno) < 20:
-                        neighboring_funcs.append(info["name"])
-
-            if neighboring_funcs:
-                context["neighboring_functions"] = neighboring_funcs
-
-        # For methods, get other methods in the same class
-        elif node_type == "method" and in_class and isinstance(parent, ast.ClassDef):
-            related_methods = []
-            class_attrs = []
-
-            class_key = f"class:{parent.name}"
-            if class_key in code_map:
-                # Get methods
-                for method_name in code_map[class_key]["methods"]:
-                    if method_name != node_name:
-                        related_methods.append(method_name)
-
-                # Get attributes
-                class_attrs = code_map[class_key]["attributes"]
-
-            if related_methods:
-                context["related_class_methods"] = related_methods
-
-            if class_attrs:
-                context["class_attributes"] = class_attrs
-
-        # For classes, get inheritance hierarchy
-        elif node_type == "class":
-            # Superclasses
-            bases = []
-            for base in node.bases:
-                if isinstance(base, ast.Name):
-                    bases.append(base.id)
-                elif isinstance(base, ast.Attribute):
-                    bases.append(self._format_attribute(base))
-
-            if bases:
-                context["base_classes"] = bases
-
-            # Get relationship information from the code map's analysis
-            subclasses = []
-
-            # Look for classes that might inherit from this one
-            for key, info in code_map.items():
-                if key.startswith("class:") and info["name"] != node_name:
-                    # This is a simplified check - in production code you would use the relationships data
-                    for base in node.bases:
-                        if isinstance(base, ast.Name) and base.id == node_name:
-                            subclasses.append(info["name"])
-                            break
-
-            if subclasses:
-                context["subclasses"] = subclasses
-
-        # Add file context
-        if Path(file_path).exists():
-            file_name = os.path.basename(file_path)
-            dir_name = os.path.dirname(file_path)
-
-            context["file_name"] = file_name
-            context["directory"] = dir_name
-
-            # Parse module from file path
-            module_parts = []
-            current_dir = dir_name
-            while current_dir and os.path.exists(
-                os.path.join(current_dir, "__init__.py")
-            ):
-                module_parts.insert(0, os.path.basename(current_dir))
-                current_dir = os.path.dirname(current_dir)
-
-            if module_parts:
-                module_name = ".".join(module_parts)
-                if file_name != "__init__.py":
-                    module_name += f".{os.path.splitext(file_name)[0]}"
-                context["module"] = module_name
+        if isinstance(node, ast.ClassDef):
+            context["name"] = node.name
+            context["bases"] = []
+            if hasattr(node, "bases"):
+                for base in node.bases:
+                    if isinstance(base, ast.Name):
+                        context["bases"].append(base.id)
 
         return context
+
+    def _get_enclosing_function_name(
+        self, node: ast.AST, tree: ast.Module
+    ) -> Optional[str]:
+        """Get the name of the function enclosing the given node."""
+        for parent in ast.walk(tree):
+            if isinstance(parent, ast.FunctionDef) and node in ast.walk(parent):
+                return parent.name
+        return None
+
+    def _add_code_relationship(
+        self,
+        relationships: Dict[str, List[Dict[str, str]]],
+        source: str,
+        target: str,
+        rel_type: str,
+        code_map: Dict[str, Dict[str, Any]],
+    ) -> None:
+        """Add a relationship between code elements."""
+        if source not in relationships:
+            relationships[source] = []
+        relationships[source].append(
+            {
+                "type": rel_type,
+                "target": target,
+                "name": code_map[target]["name"] if target in code_map else target,
+            }
+        )
 
     def get_supported_extensions(self) -> Set[str]:
         """

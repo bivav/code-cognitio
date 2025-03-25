@@ -4,8 +4,7 @@ import os
 import argparse
 import logging
 
-from src.core.search_service import SearchService
-from src.core.file_processor import FileProcessor
+from src.core.operations import CodeCognitioOperations
 
 # Setup logging
 logging.basicConfig(
@@ -43,212 +42,60 @@ DEFAULT_IGNORE_PATTERNS = [
 
 def build_index(args):
     """Build the search index from source files."""
-    search_service = SearchService(
-        model_name=args.model, data_dir=args.data_dir, use_gpu=args.gpu
+    operations = CodeCognitioOperations(
+        model_name=args.model,
+        data_dir=args.data_dir,
+        use_gpu=args.gpu,
+        use_spacy=args.spacy,
     )
 
-    # Initialize file processor
-    file_processor = FileProcessor(use_spacy=args.spacy)
+    # Build the index using the operations class
+    result = operations.build_index(
+        paths=args.paths,
+        file_types=args.file_types,
+        exclude_types=args.exclude_types,
+        ignore_dirs=DEFAULT_IGNORE_DIRS,
+        ignore_patterns=DEFAULT_IGNORE_PATTERNS,
+    )
 
-    # Parse file type filters
-    include_types = args.file_types.lower().split(",") if args.file_types else []
-
-    # Default exclusions + any user-specified exclusions
-    default_exclude = [
-        "pyc",
-        "pyo",
-        "DS_Store",
-        "git",
-        "svn",
-        "bzr",
-        "hg",
-        "idea",
-        "vscode",
-        "cache",
-        "egg-info",
-    ]
-    user_exclude = args.exclude_types.lower().split(",") if args.exclude_types else []
-    exclude_types = default_exclude + [
-        ext for ext in user_exclude if ext and ext not in default_exclude
-    ]
-
-    # Get all files
-    files = []
-    for path in args.paths:
-        if os.path.isfile(path):
-            files.append(path)
-        elif os.path.isdir(path):
-            for root, dirs, filenames in os.walk(path):
-                # Skip common directories that shouldn't be indexed
-                dirs[:] = [
-                    d
-                    for d in dirs
-                    if not (
-                        d.startswith(".")  # Skip hidden directories
-                        or d
-                        in [
-                            "__pycache__",
-                            "node_modules",
-                            "venv",
-                            ".venv",
-                            "env",
-                            ".git",
-                            ".svn",
-                            ".idea",
-                            ".vscode",
-                            "dist",
-                            "build",
-                            "target",
-                            "out",
-                            "bin",
-                            "obj",
-                            "tmp",
-                            "temp",
-                            "__pypackages__",
-                            "site-packages",
-                            ".pytest_cache",
-                            ".mypy_cache",
-                            ".ruff_cache",
-                            ".coverage",
-                        ]
-                    )
-                ]
-
-                for filename in filenames:
-                    # Skip files that shouldn't be indexed
-                    if any(
-                        filename.endswith(f".{ext}") for ext in exclude_types
-                    ) or filename.startswith("."):
-                        continue
-
-                    file_path = os.path.join(root, filename)
-                    files.append(file_path)
-
-    logger.info(f"Found {len(files)} files to process")
-
-    # Process files
-    all_chunks = file_processor.process_files(files, include_types, exclude_types)
-
-    logger.info(f"Adding {len(all_chunks)} chunks to index...")
-    search_service.build_index(all_chunks)
-
-    logger.info(f"Index build complete. Total chunks: {len(all_chunks)}")
+    logger.info(f"Index build complete. Total chunks: {result['total_chunks']}")
 
 
 def search(args):
     """Search the index for relevant information."""
-    search_service = SearchService(
+    operations = CodeCognitioOperations(
         model_name=args.model, data_dir=args.data_dir, use_gpu=args.gpu
     )
 
-    # Build signature filter if specified
-    signature_filter = {}
-    if args.param_type:
-        signature_filter["param_type"] = args.param_type
-    if args.return_type:
-        signature_filter["return_type"] = args.return_type
-    if args.param_name:
-        signature_filter["param_name"] = args.param_name
-
-    # Perform search
-    results = search_service.search(
+    # Perform search using the operations class
+    results = operations.search(
         query=args.query,
         top_k=args.top_k,
         content_filter=args.filter,
         min_score=args.min_score,
         type_filter=args.type,
-        signature_filter=signature_filter if signature_filter else None,
+        param_type=args.param_type,
+        param_name=args.param_name,
+        return_type=args.return_type,
     )
 
     if not results:
         print("No results found matching your query.")
         return
 
-    # Pretty print results for CLI users
-    print(f"\nSearch results for: {args.query}\n")
-    print(f"Found {len(results)} results:\n")
-
-    for i, result in enumerate(results, 1):
-        chunk = result["chunk"]
-        score = result["score"]
-        content = result["content"]
-
-        print(f"Result {i} (Score: {score:.4f}):")
-        print(f"Type: {chunk.get('type', 'Unknown')}")
-
-        # Display file path if available
-        if "file_path" in chunk:
-            print(f"File: {chunk['file_path']}")
-
-        # Display line numbers if available
-        if "lineno" in chunk:
-            print(f"Line: {chunk['lineno']}")
-
-        # Display document title for documentation chunks
-        if chunk.get("content_type") == "documentation" and "document_title" in chunk:
-            print(f"Document: {chunk['document_title']}")
-
-        # Display section title for section chunks
-        if chunk.get("type") == "section" and "title" in chunk:
-            print(f"Section: {chunk['title']}")
-
-        # Display readable name for functions/methods if available
-        if "readable_name" in chunk:
-            print(f"Description: {chunk['readable_name']}")
-
-        # Display patterns if available
-        if "patterns" in chunk and chunk["patterns"]:
-            print(f"Patterns: {', '.join(chunk['patterns'])}")
-
-        # Display key operations for functions
-        if "key_operations" in chunk and chunk["key_operations"]:
-            print(f"Key Operations: {', '.join(chunk['key_operations'][:3])}")
-
-        # Display usage information
-        if "usage" in chunk and "common_usage" in chunk.get("usage", {}):
-            usage = chunk["usage"]
-            if usage.get("common_usage"):
-                print(f"Common Usage: {', '.join(usage['common_usage'])}")
-            if "call_count" in usage:
-                print(f"Called {usage['call_count']} times in this file")
-
-        # Display relationships if available
-        if "relationships" in chunk and chunk["relationships"]:
-            rel_info = []
-            for rel in chunk["relationships"][:3]:  # Limit to 3 relationships
-                rel_info.append(f"{rel['type']} {rel['name']}")
-            print(f"Relationships: {', '.join(rel_info)}")
-
-        # Display content
-        print(f"\n{content}\n")
-        print(f"Location: {chunk['file_path']}")
-        print("-" * 80)
+    # Format the results using the operations class
+    formatted_results = operations.format_search_results(results, args.query)
+    print(formatted_results)
 
 
 def list_file_types(args):
     """List all supported file types."""
-    file_processor = FileProcessor()
+    operations = CodeCognitioOperations()
 
-    # Get all supported extensions
-    code_extensions = file_processor.code_extractor.get_supported_extensions()
-    doc_extensions = file_processor.doc_extractor.get_supported_extensions()
-
-    # Format the extensions for display
-    code_extensions_list = sorted(
-        [ext[1:] if ext.startswith(".") else ext for ext in code_extensions]
-    )
-    doc_extensions_list = sorted(
-        [ext[1:] if ext.startswith(".") else ext for ext in doc_extensions]
-    )
-
-    print("\nSupported file types:\n")
-    print("Code files:")
-    for ext in code_extensions_list:
-        print(f"  - {ext}")
-
-    print("\nDocumentation files:")
-    for ext in doc_extensions_list:
-        print(f"  - {ext}")
+    # Get and format the file types using the operations class
+    file_types = operations.list_file_types()
+    formatted_types = operations.format_file_types(file_types)
+    print(formatted_types)
 
 
 def main():

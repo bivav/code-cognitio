@@ -3,7 +3,11 @@
 import re
 import string
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
+import spacy
+from spacy.language import Language
+import nltk  # type: ignore
+from nltk.stem import WordNetLemmatizer  # type: ignore
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -18,49 +22,34 @@ class TextProcessor:
         Initialize the text processor.
 
         Args:
-            stop_words: List of stop words to remove. If None, a default list is used.
-            use_spacy: Whether to use spaCy for text processing (faster but requires more memory)
+            stop_words: Optional list of stop words to use
+            use_spacy: Whether to use spaCy for text processing
         """
-        self.stop_words = set(stop_words or self._get_default_stop_words())
-        self.use_spacy = use_spacy
-        self.nlp = None
-        self.nltk_lemmatizer = None
+        self.stop_words: List[str] = stop_words or self._get_default_stop_words()
+        self.use_spacy: bool = use_spacy
+        self.nlp: Optional[Language] = None
+        self.nltk_lemmatizer: Optional[WordNetLemmatizer] = None
 
-        # Try to initialize spaCy if requested
-        if self.use_spacy:
+        if use_spacy:
             try:
-                import spacy
-
-                self.nlp = spacy.load("en_core_web_sm", disable=["parser", "ner"])
+                self.nlp = spacy.load("en_core_web_sm")
                 logger.info("Using spaCy for text processing")
-            except (ImportError, OSError) as e:
+            except Exception as e:
                 logger.warning(
-                    f"Could not load spaCy model: {str(e)}. Falling back to NLTK."
+                    f"Failed to load spaCy model: {str(e)}. Falling back to NLTK."
                 )
                 self.use_spacy = False
 
-        # Fallback to NLTK if spaCy is not available
         if not self.use_spacy:
             try:
-                import nltk
-                from nltk.stem import WordNetLemmatizer
-
-                # Ensure NLTK data is downloaded
-                try:
-                    nltk.data.find("tokenizers/punkt")
-                except LookupError:
-                    nltk.download("punkt")
-                try:
-                    nltk.data.find("corpora/wordnet")
-                except LookupError:
-                    nltk.download("wordnet")
-
+                nltk.download("punkt", quiet=True)
+                nltk.download("wordnet", quiet=True)
+                nltk.download("averaged_perceptron_tagger", quiet=True)
                 self.nltk_lemmatizer = WordNetLemmatizer()
                 logger.info("Using NLTK for text processing")
-            except ImportError as e:
-                logger.warning(
-                    f"Could not initialize NLTK: {str(e)}. Basic text processing only."
-                )
+            except Exception as e:
+                logger.error(f"Failed to initialize NLTK: {str(e)}")
+                raise
 
     def process_chunk(self, chunk: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -135,18 +124,17 @@ class TextProcessor:
         # Convert to lowercase
         text = text.lower()
 
-        # Remove punctuation
-        text = text.translate(str.maketrans("", "", string.punctuation))
-
-        # Remove extra whitespace
+        # Remove special characters and extra whitespace
+        text = re.sub(r"[^\w\s]", " ", text)
         text = re.sub(r"\s+", " ", text).strip()
 
-        if self.use_spacy and self.nlp:
+        # Process with available NLP tool
+        if self.use_spacy and self.nlp is not None:
             return self._process_with_spacy(text)
-        elif self.nltk_lemmatizer:
+        elif self.nltk_lemmatizer is not None:
             return self._process_with_nltk(text)
         else:
-            # Fallback to basic processing - just remove stop words
+            # Fallback to simple stop word removal
             words = text.split()
             words = [word for word in words if word not in self.stop_words]
             return " ".join(words)
@@ -161,8 +149,10 @@ class TextProcessor:
         Returns:
             Processed text
         """
+        if self.nlp is None:
+            return text
+
         doc = self.nlp(text)
-        # Get lemmatized tokens that aren't stop words or punctuation
         tokens = [
             token.lemma_
             for token in doc
@@ -180,9 +170,9 @@ class TextProcessor:
         Returns:
             Processed text
         """
-        import nltk
+        if self.nltk_lemmatizer is None:
+            return text
 
-        # Tokenize and lemmatize
         tokens = nltk.word_tokenize(text)
         lemmatized = [
             self.nltk_lemmatizer.lemmatize(token)

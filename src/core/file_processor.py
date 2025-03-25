@@ -36,7 +36,9 @@ class FileProcessor:
         logger.info("Initialized FileProcessor")
 
     def get_supported_extensions(
-        self, include_types: List[str] = None, exclude_types: List[str] = None
+        self,
+        include_types: Optional[List[str]] = None,
+        exclude_types: Optional[List[str]] = None,
     ) -> Set[str]:
         """
         Get the list of supported file extensions based on filters.
@@ -80,8 +82,8 @@ class FileProcessor:
     def process_files(
         self,
         file_paths: List[str],
-        include_types: List[str] = None,
-        exclude_types: List[str] = None,
+        include_types: Optional[List[str]] = None,
+        exclude_types: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Process files and return a list of processed chunks.

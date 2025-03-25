@@ -88,7 +88,7 @@ class MarkdownExtractor:
         sections = []
         lines = content.split("\n")
         current_section = None
-        current_content = []
+        current_content: List[str] = []
         current_level = 0
         position = 0
 

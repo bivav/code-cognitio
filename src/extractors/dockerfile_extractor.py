@@ -315,7 +315,7 @@ class DockerfileExtractor(BaseExtractor):
             description_parts.append(base_image_str)
 
         # Count instruction types
-        instruction_counts = {}
+        instruction_counts: Dict[str, int] = {}
         for instr in instructions:
             name = instr["instruction"]
             instruction_counts[name] = instruction_counts.get(name, 0) + 1

@@ -3,10 +3,9 @@
 import os
 import json
 import logging
+from typing import List, Dict, Any, Optional, Union, Tuple, cast
 import numpy as np
-import faiss
-from typing import List, Dict, Any, Optional, Union, Tuple
-
+import faiss  # type: ignore
 from sentence_transformers import SentenceTransformer
 
 # Setup logging
@@ -31,24 +30,24 @@ class FaissSearchEngine:
             data_dir: Directory to store/load processed data and embeddings
             use_gpu: Whether to use GPU acceleration if available
         """
-        self.model_name = model_name
-        self.data_dir = data_dir
-        self.use_gpu = use_gpu
+        self.model_name: str = model_name
+        self.data_dir: str = data_dir
+        self.use_gpu: bool = use_gpu
 
         # Load the sentence transformer model
-        self.model = SentenceTransformer(model_name)
-        self.dimension = self.model.get_sentence_embedding_dimension()
+        self.model: SentenceTransformer = SentenceTransformer(model_name)
+        self.dimension: int = cast(int, self.model.get_sentence_embedding_dimension())
 
         # Initialize index variables
-        self.index = None
-        self.chunks = []
-        self.index_metadata = {}
+        self.index: Optional[Union[faiss.IndexFlatIP, faiss.GpuIndexFlatIP]] = None
+        self.chunks: List[Dict[str, Any]] = []
+        self.index_metadata: Dict[str, Any] = {}
 
         # Create separate indices for code and documentation
-        self.code_index = None
-        self.code_chunks = []
-        self.doc_index = None
-        self.doc_chunks = []
+        self.code_index: Optional[Union[faiss.IndexFlatIP, faiss.GpuIndexFlatIP]] = None
+        self.code_chunks: List[Dict[str, Any]] = []
+        self.doc_index: Optional[Union[faiss.IndexFlatIP, faiss.GpuIndexFlatIP]] = None
+        self.doc_chunks: List[Dict[str, Any]] = []
 
         # Create data directory if it doesn't exist
         os.makedirs(data_dir, exist_ok=True)
@@ -56,7 +55,7 @@ class FaissSearchEngine:
         # Initialize FAISS indices
         self._init_indices()
 
-    def _init_indices(self):
+    def _init_indices(self) -> None:
         """Initialize FAISS indices for vector similarity search."""
         # Create a flat index using inner product (equivalent to cosine similarity on normalized vectors)
         self.index = faiss.IndexFlatIP(self.dimension)
@@ -81,7 +80,7 @@ class FaissSearchEngine:
                 )
                 self.use_gpu = False
 
-    def add_chunks(self, chunks: List[Dict[str, Any]]):
+    def add_chunks(self, chunks: List[Dict[str, Any]]) -> None:
         """
         Add chunks to the search index.
 
@@ -102,14 +101,15 @@ class FaissSearchEngine:
         )
 
         # Add to the combined index
-        self.index.add(np.array(embeddings).astype("float32"))
-        self.chunks.extend(chunks)
+        if self.index is not None:
+            self.index.add(np.array(embeddings).astype("float32"))
+            self.chunks.extend(chunks)
 
         # Separate and add to content-specific indices
-        code_chunks = []
-        code_embeddings = []
-        doc_chunks = []
-        doc_embeddings = []
+        code_chunks: List[Dict[str, Any]] = []
+        code_embeddings: List[np.ndarray] = []
+        doc_chunks: List[Dict[str, Any]] = []
+        doc_embeddings: List[np.ndarray] = []
 
         for i, chunk in enumerate(chunks):
             content_type = chunk.get("content_type", "")
@@ -121,12 +121,12 @@ class FaissSearchEngine:
                 doc_embeddings.append(embeddings[i])
 
         # Add to code index if we have code chunks
-        if code_chunks:
+        if code_chunks and self.code_index is not None:
             self.code_index.add(np.array(code_embeddings).astype("float32"))
             self.code_chunks.extend(code_chunks)
 
         # Add to documentation index if we have doc chunks
-        if doc_chunks:
+        if doc_chunks and self.doc_index is not None:
             self.doc_index.add(np.array(doc_embeddings).astype("float32"))
             self.doc_chunks.extend(doc_chunks)
 
@@ -156,7 +156,7 @@ class FaissSearchEngine:
             List of search results with similarity scores
         """
         # Try to load index if not initialized
-        if self.index is None or self.index.ntotal == 0:
+        if self.index is None or (self.index is not None and self.index.ntotal == 0):
             if not self._load_index():
                 logger.warning("No index available. Please build the index first.")
                 return []
@@ -166,11 +166,22 @@ class FaissSearchEngine:
         query_embedding = np.array(query_embedding).astype("float32")
 
         # Determine which index to search based on content filter
-        if content_filter == "code" and self.code_index.ntotal > 0:
+        index_to_search = None
+        chunks_to_search: List[Dict[str, Any]] = []
+
+        if (
+            content_filter == "code"
+            and self.code_index is not None
+            and self.code_index.ntotal > 0
+        ):
             logger.info(f"Searching for '{query}' in code index only...")
             index_to_search = self.code_index
             chunks_to_search = self.code_chunks
-        elif content_filter == "documentation" and self.doc_index.ntotal > 0:
+        elif (
+            content_filter == "documentation"
+            and self.doc_index is not None
+            and self.doc_index.ntotal > 0
+        ):
             logger.info(f"Searching for '{query}' in documentation index only...")
             index_to_search = self.doc_index
             chunks_to_search = self.doc_chunks
@@ -179,13 +190,16 @@ class FaissSearchEngine:
             index_to_search = self.index
             chunks_to_search = self.chunks
 
+        if index_to_search is None:
+            return []
+
         # Search the index
         scores, indices = index_to_search.search(
             query_embedding, k=top_k * 2
         )  # Get more than needed for filtering
 
         # Build results
-        results = []
+        results: List[Dict[str, Any]] = []
         for i, (idx, score) in enumerate(zip(indices[0], scores[0])):
             # Break if we've collected enough results or if score is below threshold
             if len(results) >= top_k or score < min_score:
