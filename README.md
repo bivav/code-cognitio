@@ -25,17 +25,17 @@ Code Cognitio extracts, processes, and indexes code from various programming lan
 2. Create a virtual environment:
 
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   uv venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
    ```
 
 3. Install dependencies:
 
    ```bash
-   # Install uv first
-   pip install uv
-   # Then use uv to install requirements
-   uv pip install -r requirements.txt
+   # Install uv first (if not already installed)
+   curl -fsSL https://get.uv.dev | sh
+   # Then use uv to install dependencies from pyproject.toml
+   uv sync
    ```
 
 ## Usage
@@ -170,12 +170,13 @@ code-cognitio/
 ├── docs/            # Documentation
 ├── data/            # Data files
 ├── examples/        # Example code for testing
+├── pyproject.toml   # Project dependencies and configuration
 └── Makefile         # Build and test automation
 ```
 
 The project is organized into several key directories:
 
-- `src/`: Contains the core Python code for the semantic search engine
+- `src/`: Contains the core Python source code for the semantic search engine
 - `tests/`: Contains unit and integration tests
 - `docs/`: Contains project documentation
 - `data/`: Contains data files used by the project
