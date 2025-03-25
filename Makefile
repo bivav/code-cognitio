@@ -1,19 +1,13 @@
-.PHONY: clean test test-unit test-integration test-extractors test-processors test-search coverage coverage-html dev requirements extension extension-clean extension-package copy-python-src ready ready-no-setup
+.PHONY: clean test test-unit test-integration test-extractors test-processors test-search coverage coverage-html dev requirements ready
 
 # Variables
 PYTHON = python
 PYTEST = pytest
 PIP = uv pip
-VSCE = vsce
-NODE = node
-NPM = npm
 
 # Directories
 SRC_DIR = src
 TEST_DIR = tests
-EXTENSION_DIR = extension
-EXTENSION_PYTHON_DIR = $(EXTENSION_DIR)/python
-EXTENSION_SCRIPTS_DIR = $(EXTENSION_DIR)/scripts
 
 # Default target
 all: test
@@ -89,60 +83,11 @@ requirements:
 # Development setup
 dev: deps
 	$(PIP) install black flake8 mypy
-	$(PIP) install -e . 
-
-# Extension commands
-
-# Clean extension directories
-extension-clean:
-	rm -rf $(EXTENSION_DIR)/out
-	rm -rf $(EXTENSION_PYTHON_DIR)/src
-	rm -rf $(EXTENSION_PYTHON_DIR)/.venv
-	rm -f $(EXTENSION_DIR)/*.vsix
-
-# Copy Python source to extension
-copy-python-src:
-	@echo "Copying Python source to extension..."
-	cd $(EXTENSION_DIR) && $(NODE) scripts/copy-python-src.js
-
-# Compile TypeScript for extension
-extension-compile:
-	cd $(EXTENSION_DIR) && $(NPM) run compile
-
-# Pack the extension
-extension-package: extension-compile copy-python-src
-	@echo "Packaging VS Code extension..."
-	cd $(EXTENSION_DIR) && $(VSCE) package
-
-# Set up extension environment
-extension-setup:
-	@echo "Setting up extension environment..."
-	cd $(EXTENSION_PYTHON_DIR) && $(PYTHON) setup.py
-
-# Test extension
-extension-test: copy-python-src
-	cd $(EXTENSION_PYTHON_DIR) && $(PYTHON) main.py --data-dir ~/.code-cognitio list-file-types
+	$(PIP) install -e .
 
 # Do everything
-ready: clean format lint typecheck-warn test coverage extension-clean extension-package extension-setup
+ready: clean format lint typecheck-warn test coverage
 	@echo "=================================================="
 	@echo "✅ Code Cognitio is ready!"
 	@echo "✅ All tests passed"
-	@echo "✅ Extension packaged at: $(EXTENSION_DIR)/code-cognitio-*.vsix"
-	@echo "=================================================="
-	@echo "Next steps:"
-	@echo "1. Install the extension in VS Code"
-	@echo "2. Run 'make extension-test' to verify extension functionality"
-	@echo "=================================================="
-
-# Do everything except extension setup
-ready-no-setup: clean format lint typecheck-warn test coverage extension-clean extension-package
-	@echo "=================================================="
-	@echo "✅ Code Cognitio is ready!"
-	@echo "✅ All tests passed"
-	@echo "✅ Extension packaged at: $(EXTENSION_DIR)/code-cognitio-*.vsix"
-	@echo "=================================================="
-	@echo "Next steps:"
-	@echo "1. Install the extension in VS Code"
-	@echo "2. Run 'make extension-setup' to set up the extension environment"
 	@echo "==================================================" 

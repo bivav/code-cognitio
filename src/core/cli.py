@@ -14,6 +14,33 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+DEFAULT_IGNORE_DIRS = [
+    ".git",
+    "__pycache__",
+    "node_modules",
+    "build",
+    "dist",
+    "venv",
+    ".venv",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".coverage",
+    "htmlcov",
+]
+
+DEFAULT_IGNORE_PATTERNS = [
+    ".git",
+    ".DS_Store",
+    "*.pyc",
+    "*.pyo",
+    "*.pyd",
+    "*.so",
+    "*.dylib",
+    "*.dll",
+    "*.class",
+    "*.log",
+]
+
 
 def build_index(args):
     """Build the search index from source files."""
@@ -135,79 +162,68 @@ def search(args):
     )
 
     if not results:
-        if args.json:
-            print(json.dumps([]))
-        else:
-            print("No results found matching your query.")
+        print("No results found matching your query.")
         return
 
-    # Output results
-    if args.json:
-        # Output JSON results for programmatic consumption (used by VS Code extension)
-        print(json.dumps(results))
-    else:
-        # Pretty print results for CLI users
-        print(f"\nSearch results for: {args.query}\n")
-        print(f"Found {len(results)} results:\n")
+    # Pretty print results for CLI users
+    print(f"\nSearch results for: {args.query}\n")
+    print(f"Found {len(results)} results:\n")
 
-        for i, result in enumerate(results, 1):
-            chunk = result["chunk"]
-            score = result["score"]
-            content = result["content"]
+    for i, result in enumerate(results, 1):
+        chunk = result["chunk"]
+        score = result["score"]
+        content = result["content"]
 
-            print(f"Result {i} (Score: {score:.4f}):")
-            print(f"Type: {chunk.get('type', 'Unknown')}")
+        print(f"Result {i} (Score: {score:.4f}):")
+        print(f"Type: {chunk.get('type', 'Unknown')}")
 
-            # Display file path if available
-            if "file_path" in chunk:
-                print(f"File: {chunk['file_path']}")
+        # Display file path if available
+        if "file_path" in chunk:
+            print(f"File: {chunk['file_path']}")
 
-            # Display line numbers if available
-            if "lineno" in chunk:
-                print(f"Line: {chunk['lineno']}")
+        # Display line numbers if available
+        if "lineno" in chunk:
+            print(f"Line: {chunk['lineno']}")
 
-            # Display document title for documentation chunks
-            if (
-                chunk.get("content_type") == "documentation"
-                and "document_title" in chunk
-            ):
-                print(f"Document: {chunk['document_title']}")
+        # Display document title for documentation chunks
+        if chunk.get("content_type") == "documentation" and "document_title" in chunk:
+            print(f"Document: {chunk['document_title']}")
 
-            # Display section title for section chunks
-            if chunk.get("type") == "section" and "title" in chunk:
-                print(f"Section: {chunk['title']}")
+        # Display section title for section chunks
+        if chunk.get("type") == "section" and "title" in chunk:
+            print(f"Section: {chunk['title']}")
 
-            # Display readable name for functions/methods if available
-            if "readable_name" in chunk:
-                print(f"Description: {chunk['readable_name']}")
+        # Display readable name for functions/methods if available
+        if "readable_name" in chunk:
+            print(f"Description: {chunk['readable_name']}")
 
-            # Display patterns if available
-            if "patterns" in chunk and chunk["patterns"]:
-                print(f"Patterns: {', '.join(chunk['patterns'])}")
+        # Display patterns if available
+        if "patterns" in chunk and chunk["patterns"]:
+            print(f"Patterns: {', '.join(chunk['patterns'])}")
 
-            # Display key operations for functions
-            if "key_operations" in chunk and chunk["key_operations"]:
-                print(f"Key Operations: {', '.join(chunk['key_operations'][:3])}")
+        # Display key operations for functions
+        if "key_operations" in chunk and chunk["key_operations"]:
+            print(f"Key Operations: {', '.join(chunk['key_operations'][:3])}")
 
-            # Display usage information
-            if "usage" in chunk and "common_usage" in chunk.get("usage", {}):
-                usage = chunk["usage"]
-                if usage.get("common_usage"):
-                    print(f"Common Usage: {', '.join(usage['common_usage'])}")
-                if "call_count" in usage:
-                    print(f"Called {usage['call_count']} times in this file")
+        # Display usage information
+        if "usage" in chunk and "common_usage" in chunk.get("usage", {}):
+            usage = chunk["usage"]
+            if usage.get("common_usage"):
+                print(f"Common Usage: {', '.join(usage['common_usage'])}")
+            if "call_count" in usage:
+                print(f"Called {usage['call_count']} times in this file")
 
-            # Display relationships if available
-            if "relationships" in chunk and chunk["relationships"]:
-                rel_info = []
-                for rel in chunk["relationships"][:3]:  # Limit to 3 relationships
-                    rel_info.append(f"{rel['type']} {rel['name']}")
-                print(f"Relationships: {', '.join(rel_info)}")
+        # Display relationships if available
+        if "relationships" in chunk and chunk["relationships"]:
+            rel_info = []
+            for rel in chunk["relationships"][:3]:  # Limit to 3 relationships
+                rel_info.append(f"{rel['type']} {rel['name']}")
+            print(f"Relationships: {', '.join(rel_info)}")
 
-            # Display content
-            print(f"\n{content}\n")
-            print(f"Location: {chunk['file_path']}")
-            print("-" * 80)
+        # Display content
+        print(f"\n{content}\n")
+        print(f"Location: {chunk['file_path']}")
+        print("-" * 80)
 
 
 def list_file_types(args):
@@ -226,23 +242,14 @@ def list_file_types(args):
         [ext[1:] if ext.startswith(".") else ext for ext in doc_extensions]
     )
 
-    # Create a result dictionary
-    result = {"code": code_extensions_list, "documentation": doc_extensions_list}
+    print("\nSupported file types:\n")
+    print("Code files:")
+    for ext in code_extensions_list:
+        print(f"  - {ext}")
 
-    if args.json:
-        # Output JSON for programmatic consumption
-        print(json.dumps(result))
-    else:
-        # Pretty print for CLI users
-        print("\nSupported file types:\n")
-
-        print("Code files:")
-        for ext in code_extensions_list:
-            print(f"  .{ext}")
-
-        print("\nDocumentation files:")
-        for ext in doc_extensions_list:
-            print(f"  .{ext}")
+    print("\nDocumentation files:")
+    for ext in doc_extensions_list:
+        print(f"  - {ext}")
 
 
 def main():
